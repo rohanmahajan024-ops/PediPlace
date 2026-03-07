@@ -2,21 +2,21 @@ import React, { useState } from 'react';
 import LoginPage from './components/LoginPage';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import CustomerList from './components/CustomerList';
-import ChatInterface from './components/ChatInterface';
+import SystemsList from './components/SystemsList';
+import SystemInterface from './components/SystemInterface';
 import SponsorList from './components/SponsorList';
 import SponsorChatInterface from './components/SponsorChatInterface';
 
-interface Customer {
+interface MedicalSystem {
   id: string;
   name: string;
-  email: string;
-  phone: string;
-  lastMessage: string;
-  timestamp: string;
-  unread: number;
-  status: 'online' | 'offline';
-  avatar: string;
+  description: string;
+  category: string;
+  accuracy: number;
+  lastUsed: string;
+  status: 'active' | 'maintenance' | 'offline';
+  icon: React.ComponentType<any>;
+  color: string;
 }
 
 interface Sponsor {
@@ -34,7 +34,7 @@ interface Sponsor {
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedSystem, setSelectedSystem] = useState<MedicalSystem | null>(null);
   const [selectedSponsor, setSelectedSponsor] = useState<Sponsor | null>(null);
 
   const handleLogin = () => {
@@ -43,8 +43,8 @@ function App() {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    if (tab !== 'customers') {
-      setSelectedCustomer(null);
+    if (tab !== 'systems') {
+      setSelectedSystem(null);
     }
     if (tab !== 'sponsors') {
       setSelectedSponsor(null);
@@ -59,23 +59,23 @@ function App() {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
-      case 'customers':
+      case 'systems':
         return (
           <div className="flex h-full">
-            <CustomerList
-              onCustomerSelect={setSelectedCustomer}
-              selectedCustomer={selectedCustomer}
+            <SystemsList
+              onSystemSelect={setSelectedSystem}
+              selectedSystem={selectedSystem}
             />
-            {selectedCustomer ? (
-              <ChatInterface customer={selectedCustomer} />
+            {selectedSystem ? (
+              <SystemInterface system={selectedSystem} />
             ) : (
               <div className="flex-1 flex items-center justify-center bg-gray-50">
                 <div className="text-center">
-                  <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl">💬</span>
+                  <div className="w-20 h-20 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-2xl">🧠</span>
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Patient</h3>
-                  <p className="text-gray-500">Choose a patient from the list to start chatting</p>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Select an AI System</h3>
+                  <p className="text-gray-500">Choose a medical AI system to start disease prediction and analysis</p>
                 </div>
               </div>
             )}

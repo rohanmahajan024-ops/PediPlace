@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Users, HandHeart, Guitar as Hospital, Settings } from 'lucide-react';
+import { BarChart3, Brain, HandHeart, Guitar as Hospital, Settings } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -8,7 +8,7 @@ interface SidebarProps {
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-  { id: 'customers', label: 'Patients', icon: Users },
+  { id: 'systems', label: 'AI Systems', icon: Brain },
   { id: 'sponsors', label: 'Sponsors', icon: HandHeart },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
