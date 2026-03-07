@@ -107,6 +107,7 @@ export default function Dashboard() {
                   activity.type === 'reply' ? 'bg-purple-500' :
                 activity.type === 'alert' ? 'bg-red-500' :
                 'bg-purple-500'
+                }`} />
                 <p className="text-gray-900 flex-1">{activity.message}</p>
                 <span className="text-sm text-gray-500">{activity.time}</span>
               </div>
