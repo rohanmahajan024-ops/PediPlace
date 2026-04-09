@@ -1,96 +1,211 @@
 import React, { useState } from 'react';
-import { Guitar as Hospital, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Sun, Moon, ArrowLeft, Heart } from 'lucide-react';
 
-interface LoginPageProps {
-  onLogin: () => void;
+export interface AuthUser {
+  email: string;
+  firstName: string;
+  lastName: string;
 }
 
-export default function LoginPage({ onLogin }: LoginPageProps) {
+const ALLOWED_USERS: AuthUser[] = [
+  { email: 'emily.lai@utdallas.edu', firstName: 'Emily', lastName: 'Lai' },
+  { email: 'rohanshaileshkumar.mahajan@utdallas.edu', firstName: 'Rohan', lastName: 'Mahajan' },
+  { email: 'maanasakeertana.malladi@utdallas.edu', firstName: 'Maanasa', lastName: 'Malladi' },
+  { email: 'saivishnu.malladi@utdallas.edu', firstName: 'Sai', lastName: 'Malladi' },
+  { email: 'meharkaur.matta@utdallas.edu', firstName: 'Mehar', lastName: 'Matta' },
+];
+
+const ACCESS_PASSWORD = '123';
+
+interface LoginPageProps {
+  onLogin: (user: AuthUser) => void;
+  darkMode: boolean;
+  onToggleDark: () => void;
+  onBack?: () => void;
+}
+
+export default function LoginPage({ onLogin, darkMode, onToggleDark, onBack }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    const user = ALLOWED_USERS.find(
+      (u) => u.email === email.toLowerCase().trim()
+    );
+
+    if (!user || password !== ACCESS_PASSWORD) {
+      setError('Access denied. Invalid credentials or unauthorized email.');
+      return;
+    }
+
     setIsLoading(true);
-    
-    // Mock authentication - simulate API call
     setTimeout(() => {
       setIsLoading(false);
-      onLogin();
-    }, 1500);
+      onLogin(user);
+    }, 900);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-pedi-50 via-white to-pedi-100 dark:bg-none dark:bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden transition-colors duration-200">
+      {/* Decorative blobs */}
+      <div className="absolute top-0 right-0 w-96 h-96 bg-pedi-200/40 dark:bg-pedi-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-80 h-80 bg-pedi-orange-100/50 dark:bg-pedi-orange-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 left-1/4 w-64 h-64 bg-pedi-100/30 dark:bg-pedi-700/5 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Dark mode subtle grid */}
+      <div
+        className="absolute inset-0 opacity-0 dark:opacity-[0.015] pointer-events-none"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+        }}
+      />
+
+      {/* Back button */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="absolute top-5 left-5 flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-slate-400 hover:text-pedi-600 dark:hover:text-pedi-400 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-3 py-2 rounded-xl shadow-sm transition-all"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Donor Discovery
+        </button>
+      )}
+
+      {/* Dark mode toggle */}
+      <button
+        onClick={onToggleDark}
+        className="absolute top-5 right-5 w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-pedi-600 dark:hover:text-pedi-400 shadow-sm transition-all"
+      >
+        {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
+
+      <div className="relative z-10 w-full max-w-md">
+        {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
-            <Hospital className="w-8 h-8 text-white" />
+          {/* Logo / Icon */}
+          <div className="flex justify-center mb-5">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-pedi-400 to-pedi-600 flex items-center justify-center shadow-xl shadow-pedi-500/30">
+                <img
+                  src="/pediplace-logo.png"
+                  alt="PediPlace"
+                  className="h-10 w-auto object-contain"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    (e.currentTarget.nextSibling as HTMLElement).style.display = 'flex';
+                  }}
+                />
+                <div className="hidden items-center justify-center">
+                  <Heart className="w-8 h-8 text-white" fill="white" />
+                </div>
+              </div>
+              <div className="absolute -bottom-1.5 -right-1.5 w-5 h-5 bg-pedi-orange-400 rounded-full border-2 border-white dark:border-slate-950 flex items-center justify-center">
+                <span className="text-white text-[8px] font-bold">+</span>
+              </div>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">PediPlace Portal</h1>
-          <p className="text-gray-600 mt-2">Denton Healthcare Management System</p>
+
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">PediPlace</h1>
+          <p className="text-pedi-600 dark:text-pedi-400 mt-1 text-sm font-medium">
+            Making healthcare a reality for every kid
+          </p>
+          <p className="text-gray-400 dark:text-slate-500 mt-0.5 text-xs">Staff Portal · UTDallas</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter your email"
-                required
-              />
-            </div>
-          </div>
+        {/* Card */}
+        <div className="bg-white dark:bg-slate-900/70 dark:backdrop-blur-2xl border border-pedi-100 dark:border-slate-700/40 rounded-2xl p-8 shadow-xl shadow-pedi-500/10 dark:shadow-black/60 transition-colors duration-200">
+          {/* Subtle top accent bar */}
+          <div className="absolute top-0 left-8 right-8 h-0.5 bg-gradient-to-r from-pedi-400 to-pedi-500 rounded-full -translate-y-px opacity-0" />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Enter your password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-          </div>
+          <p className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-6">Sign in to your account</p>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center disabled:opacity-50"
-          >
-            {isLoading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              'Sign In'
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Email */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-slate-500 uppercase tracking-wider mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-600 w-4 h-4" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                  className="w-full bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700/60 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-600 pl-10 pr-4 py-3 rounded-xl focus:outline-none focus:border-pedi-400 dark:focus:border-pedi-500/60 focus:ring-2 focus:ring-pedi-100 dark:focus:ring-pedi-500/15 transition-all text-sm"
+                  placeholder="name@UTDallas.edu"
+                  required
+                  autoComplete="email"
+                />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-slate-500 uppercase tracking-wider mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-600 w-4 h-4" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                  className="w-full bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700/60 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-600 pl-10 pr-12 py-3 rounded-xl focus:outline-none focus:border-pedi-400 dark:focus:border-pedi-500/60 focus:ring-2 focus:ring-pedi-100 dark:focus:ring-pedi-500/15 transition-all text-sm"
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-600 hover:text-pedi-500 dark:hover:text-pedi-400 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div className="flex items-center gap-2.5 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/20 rounded-xl px-4 py-3 text-red-600 dark:text-red-400 text-sm">
+                <span className="w-1.5 h-1.5 bg-red-500 dark:bg-red-400 rounded-full flex-shrink-0" />
+                {error}
+              </div>
             )}
-          </button>
-        </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-500">
-            Demo credentials: Any email and password will work
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full mt-2 bg-gradient-to-r from-pedi-500 to-pedi-600 dark:from-pedi-500 dark:to-pedi-700 hover:from-pedi-400 hover:to-pedi-600 dark:hover:from-pedi-400 dark:hover:to-pedi-600 text-white py-3 px-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-pedi-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Access Portal</span>
+                  <span className="opacity-70 text-base">→</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Mission tagline */}
+        <div className="mt-5 text-center space-y-1">
+          <p className="text-xs text-gray-400 dark:text-slate-600">
+            Restricted access — UTDallas Healthcare Team only
+          </p>
+          <p className="text-xs text-pedi-500/70 dark:text-pedi-700 italic">
+            "Care at Every Milestone"
           </p>
         </div>
       </div>

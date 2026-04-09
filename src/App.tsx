@@ -1,128 +1,128 @@
-import React, { useState } from 'react';
-import LoginPage from './components/LoginPage';
+import { useState } from 'react';
+import LoginPage, { AuthUser } from './components/LoginPage';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import SystemsList from './components/SystemsList';
-import SystemInterface from './components/SystemInterface';
 import SponsorList from './components/SponsorList';
 import SponsorChatInterface from './components/SponsorChatInterface';
-
-interface MedicalSystem {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  accuracy: number;
-  lastUsed: string;
-  status: 'active' | 'maintenance' | 'offline';
-  icon: React.ComponentType<any>;
-  color: string;
-}
-
-interface Sponsor {
-  id: string;
-  name: string;
-  company: string;
-  email: string;
-  contribution: number;
-  status: 'active' | 'pending' | 'inactive';
-  lastContact: string;
-  category: string;
-  avatar: string;
-}
+import SettingsPage from './components/SettingsPage';
+import DonorDiscovery from './components/DonorDiscovery';
+import PediPlaceSite from './components/PediPlaceSite';
+import { HandHeart } from 'lucide-react';
+import { Sponsor } from './types/sponsor';
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedSystem, setSelectedSystem] = useState<MedicalSystem | null>(null);
   const [selectedSponsor, setSelectedSponsor] = useState<Sponsor | null>(null);
+  const [darkMode, setDarkMode] = useState(false);
 
-  const handleLogin = () => {
-    setIsLoggedIn(true);
+  const handleLogin = (u: AuthUser) => {
+    setUser(u);
+    setShowLogin(false);
+    setActiveTab('dashboard');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setActiveTab('dashboard');
+    setSelectedSponsor(null);
   };
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    if (tab !== 'systems') {
-      setSelectedSystem(null);
-    }
-    if (tab !== 'sponsors') {
-      setSelectedSponsor(null);
-    }
+    if (tab !== 'sponsors') setSelectedSponsor(null);
   };
 
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
+  /* ── Public Donor Discovery (default, no login required) ── */
+  if (!user && !showLogin) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+        <DonorDiscovery
+          publicMode
+          darkMode={darkMode}
+          onToggleDark={() => setDarkMode(!darkMode)}
+          onLoginClick={() => setShowLogin(true)}
+        />
+      </div>
+    );
   }
 
+  /* ── Login page ── */
+  if (!user && showLogin) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+        <LoginPage
+          onLogin={handleLogin}
+          darkMode={darkMode}
+          onToggleDark={() => setDarkMode(!darkMode)}
+          onBack={() => setShowLogin(false)}
+        />
+      </div>
+    );
+  }
+
+  /* ── Admin portal (logged in) ── */
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
-      case 'systems':
+
+      case 'donor_bot':
         return (
-          <div className="flex h-full">
-            <SystemsList
-              onSystemSelect={setSelectedSystem}
-              selectedSystem={selectedSystem}
-            />
-            {selectedSystem ? (
-              <SystemInterface system={selectedSystem} />
-            ) : (
-              <div className="flex-1 flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                  <div className="w-20 h-20 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl">🧠</span>
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Select an AI System</h3>
-                  <p className="text-gray-500">Choose a medical AI system to start disease prediction and analysis</p>
-                </div>
-              </div>
-            )}
+          <div className="flex-1 overflow-y-auto">
+            <DonorDiscovery darkMode={darkMode} onToggleDark={() => setDarkMode(!darkMode)} />
           </div>
         );
+
       case 'sponsors':
         return (
           <div className="flex h-full">
-            <SponsorList
-              onSponsorSelect={setSelectedSponsor}
-              selectedSponsor={selectedSponsor}
-            />
+            <SponsorList onSponsorSelect={setSelectedSponsor} selectedSponsor={selectedSponsor} />
             {selectedSponsor ? (
               <SponsorChatInterface sponsor={selectedSponsor} />
             ) : (
-              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-white to-purple-50">
+              <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-slate-950">
                 <div className="text-center">
-                  <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl">🤝</span>
+                  <div className="w-16 h-16 bg-pedi-50 dark:bg-slate-800 border border-pedi-100 dark:border-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                    <HandHeart className="w-7 h-7 text-pedi-500 dark:text-pedi-400" />
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Sponsor</h3>
-                  <p className="text-gray-500">Choose a sponsor to manage partnership communications</p>
+                  <h3 className="text-base font-semibold text-gray-800 dark:text-slate-200 mb-1.5">No sponsor selected</h3>
+                  <p className="text-sm text-gray-500 dark:text-slate-500 max-w-xs">
+                    Choose a sponsor from the list to manage partnership communications
+                  </p>
                 </div>
               </div>
             )}
           </div>
         );
+
       case 'settings':
         return (
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Settings</h1>
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">System Configuration</h2>
-              <p className="text-gray-600">Settings panel will be implemented in the next iteration.</p>
-            </div>
-          </div>
+          <SettingsPage
+            user={user!}
+            darkMode={darkMode}
+            onToggleDark={() => setDarkMode(!darkMode)}
+          />
         );
+
       default:
         return <Dashboard />;
     }
   };
 
   return (
-    <div className="h-screen flex bg-gray-50">
-      <Sidebar activeTab={activeTab} onTabChange={handleTabChange} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {renderContent()}
+    <div className={`${darkMode ? 'dark' : ''} h-screen flex`}>
+      <div className="h-full flex w-full bg-gray-50 dark:bg-slate-950 transition-colors duration-200">
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          user={user!}
+          onLogout={handleLogout}
+          darkMode={darkMode}
+          onToggleDark={() => setDarkMode(!darkMode)}
+        />
+        <div className="flex-1 flex flex-col overflow-hidden">{renderContent()}</div>
       </div>
     </div>
   );

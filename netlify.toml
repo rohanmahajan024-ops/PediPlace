@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/api/propublica/*"
+  to = "https://projects.propublica.org/nonprofits/api/v2/:splat"
+  status = 200
+  force = true
