@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import {
-  User, Bell, Brain, HandHeart, ShieldCheck, Download,
+  User, Bell, HandHeart, ShieldCheck, Download,
   Sun, Moon, Info, ChevronRight, Check, Mail,
-  Stethoscope, ToggleLeft, ToggleRight, AlertTriangle,
+  Stethoscope,
   FileDown, Trash2, Clock, Globe, Lock,
 } from 'lucide-react';
 import { AuthUser } from './LoginPage';
@@ -14,13 +14,12 @@ interface SettingsPageProps {
   onToggleDark: () => void;
 }
 
-type Section = 'profile' | 'appearance' | 'notifications' | 'ai' | 'sponsors' | 'security' | 'data' | 'about';
+type Section = 'profile' | 'appearance' | 'notifications' | 'sponsors' | 'security' | 'data' | 'about';
 
 const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile',       label: 'Profile',             icon: User,         description: 'Your account info' },
   { id: 'appearance',    label: 'Appearance',           icon: Sun,          description: 'Theme & display' },
   { id: 'notifications', label: 'Notifications',        icon: Bell,         description: 'Alerts & emails' },
-  { id: 'ai',            label: 'AI Symptom Checker',   icon: Brain,        description: 'AI behavior & accuracy' },
   { id: 'sponsors',      label: 'Sponsor Management',   icon: HandHeart,    description: 'Outreach & templates' },
   { id: 'security',      label: 'Security',             icon: ShieldCheck,  description: 'Access & sessions' },
   { id: 'data',          label: 'Data & Export',        icon: Download,     description: 'Export or clear data' },
@@ -80,14 +79,6 @@ export default function SettingsPage({ user, darkMode, onToggleDark }: SettingsP
   const [notifWeeklySummary, setNotifWeeklySummary] = useState(false);
   const [notifPendingFollowUp, setNotifPendingFollowUp] = useState(true);
   const [notifEmail, setNotifEmail] = useState(false);
-
-  /* ── AI Symptom Checker settings ── */
-  const [aiAutoSave, setAiAutoSave] = useState(true);
-  const [aiShowUrgency, setAiShowUrgency] = useState(true);
-  const [aiMaxConditions, setAiMaxConditions] = useState('5');
-  const [aiUrgencyThreshold, setAiUrgencyThreshold] = useState('moderate');
-  const [aiImageAnalysis, setAiImageAnalysis] = useState(true);
-  const [aiDisclaimer, setAiDisclaimer] = useState(true);
 
   /* ── Sponsor settings ── */
   const [sponsorAutoReminder, setSponsorAutoReminder] = useState(true);
@@ -246,59 +237,6 @@ export default function SettingsPage({ user, darkMode, onToggleDark }: SettingsP
     </div>
   );
 
-  const renderAI = () => (
-    <div className="space-y-4">
-      <SectionCard title="Analysis Behavior">
-        <RowItem label="Auto-Save History" description="Automatically save symptom check sessions to local storage">
-          <Toggle enabled={aiAutoSave} onToggle={() => setAiAutoSave(!aiAutoSave)} />
-        </RowItem>
-        <RowItem label="Show Urgency Level" description="Display urgency badge on symptom results">
-          <Toggle enabled={aiShowUrgency} onToggle={() => setAiShowUrgency(!aiShowUrgency)} />
-        </RowItem>
-        <RowItem label="Image Analysis" description="Allow AI to analyze uploaded images (photos, PDFs)">
-          <Toggle enabled={aiImageAnalysis} onToggle={() => setAiImageAnalysis(!aiImageAnalysis)} />
-        </RowItem>
-        <RowItem label="Show Medical Disclaimer" description="Display disclaimer banner on all AI results">
-          <Toggle enabled={aiDisclaimer} onToggle={() => setAiDisclaimer(!aiDisclaimer)} />
-        </RowItem>
-      </SectionCard>
-
-      <SectionCard title="Output Configuration">
-        <RowItem label="Max Conditions Shown" description="Number of possible diagnoses displayed per check">
-          <select
-            value={aiMaxConditions}
-            onChange={(e) => setAiMaxConditions(e.target.value)}
-            className="text-sm bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-3 py-1.5 rounded-lg focus:outline-none"
-          >
-            {['3','5','8','10'].map((v) => <option key={v}>{v}</option>)}
-          </select>
-        </RowItem>
-        <RowItem label="Urgency Threshold" description="Minimum severity level to trigger an urgent alert">
-          <select
-            value={aiUrgencyThreshold}
-            onChange={(e) => setAiUrgencyThreshold(e.target.value)}
-            className="text-sm bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-3 py-1.5 rounded-lg focus:outline-none"
-          >
-            <option value="low">Low</option>
-            <option value="moderate">Moderate</option>
-            <option value="high">High</option>
-            <option value="critical">Critical Only</option>
-          </select>
-        </RowItem>
-      </SectionCard>
-
-      <div className="bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/20 rounded-2xl p-4 flex gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-semibold text-amber-800 dark:text-amber-400">Medical Disclaimer</p>
-          <p className="text-xs text-amber-700 dark:text-amber-500 mt-0.5 leading-relaxed">
-            PediPlace AI Symptom Checker is for informational purposes only. It does not replace professional medical advice, diagnosis, or treatment. Always consult a licensed healthcare provider.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderSponsors = () => (
     <div className="space-y-4">
       <SectionCard title="Follow-Up Reminders">
@@ -426,25 +364,9 @@ export default function SettingsPage({ user, darkMode, onToggleDark }: SettingsP
             {exportStatus || 'Download CSV'}
           </button>
         </RowItem>
-        <RowItem
-          label="Export AI Symptom History"
-          description="Download all saved symptom check sessions"
-        >
-          <button className="flex items-center gap-2 bg-violet-500 hover:bg-violet-600 text-white text-xs font-semibold px-3 py-2 rounded-xl transition-colors">
-            <FileDown className="w-3.5 h-3.5" /> Download JSON
-          </button>
-        </RowItem>
       </SectionCard>
 
       <SectionCard title="Clear Data">
-        <RowItem
-          label="Clear AI Symptom History"
-          description="Permanently removes all saved symptom check sessions from local storage"
-        >
-          <button className="flex items-center gap-2 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold px-3 py-2 rounded-xl transition-colors border border-red-200 dark:border-red-500/20">
-            <Trash2 className="w-3.5 h-3.5" /> Clear History
-          </button>
-        </RowItem>
         <RowItem
           label="Reset All Settings"
           description="Restore all settings to their default values"
@@ -470,7 +392,7 @@ export default function SettingsPage({ user, darkMode, onToggleDark }: SettingsP
           </div>
         </div>
         <p className="text-blue-100 text-xs leading-relaxed">
-          A pediatric health management platform combining AI-powered symptom analysis with sponsor relationship management — built by the UTDallas Healthcare Team.
+          A pediatric healthcare management portal focused on sponsor relationships and donor operations — built by the UTDallas Healthcare Team.
         </p>
       </div>
 
@@ -480,9 +402,6 @@ export default function SettingsPage({ user, darkMode, onToggleDark }: SettingsP
         </RowItem>
         <RowItem label="Build">
           <span className="text-sm font-mono text-gray-600 dark:text-slate-400">2026.03</span>
-        </RowItem>
-        <RowItem label="AI Engine">
-          <span className="text-sm text-gray-600 dark:text-slate-400">Azure OpenAI GPT-4o</span>
         </RowItem>
         <RowItem label="Frontend">
           <span className="text-sm text-gray-600 dark:text-slate-400">React 18 · Vite · Tailwind CSS</span>
@@ -497,8 +416,6 @@ export default function SettingsPage({ user, darkMode, onToggleDark }: SettingsP
 
       <SectionCard title="API Status">
         {[
-          { name: 'Azure OpenAI', status: 'Operational', color: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-500' },
-          { name: 'Symptom Analysis Engine', status: 'Operational', color: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-500' },
           { name: 'Sponsor Data Storage', status: 'Local (offline)', color: 'text-blue-600 dark:text-blue-400', dot: 'bg-blue-500' },
           { name: 'Email Service', status: 'Not configured', color: 'text-gray-500 dark:text-slate-500', dot: 'bg-gray-400' },
         ].map((s) => (
@@ -531,7 +448,6 @@ export default function SettingsPage({ user, darkMode, onToggleDark }: SettingsP
     profile: renderProfile(),
     appearance: renderAppearance(),
     notifications: renderNotifications(),
-    ai: renderAI(),
     sponsors: renderSponsors(),
     security: renderSecurity(),
     data: renderData(),

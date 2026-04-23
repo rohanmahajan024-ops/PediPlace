@@ -81,15 +81,37 @@ const PROGRAMS = [
   },
 ];
 
-/* ─── BOT HELPERS (self-contained, no import from DonorDiscovery) ─── */
-type BotStateShape = { name: string; email: string; interest: string; program: string; donationAmount: string; timeline: string; volunteerType: string };
-const EMPTY_BOT_STATE: BotStateShape = { name: '', email: '', interest: '', program: '', donationAmount: '', timeline: '', volunteerType: '' };
+/* ─── BOT HELPERS — state shape must match buildBotMessages in DonorDiscovery ─── */
+type BotStateShape = {
+  firstName: string;
+  lastName: string;
+  name: string;
+  email: string;
+  interest: string;
+  program: string;
+  donationAmount: string;
+  timeline: string;
+  volunteerType: string;
+};
+const EMPTY_BOT_STATE: BotStateShape = {
+  firstName: '',
+  lastName: '',
+  name: '',
+  email: '',
+  interest: '',
+  program: '',
+  donationAmount: '',
+  timeline: '',
+  volunteerType: '',
+};
 
 function useBot() {
   const [step, setStep]       = useState<BotStep>('welcome');
   const [msgs, setMsgs]       = useState<ChatMsg[]>([]);
   const [state, setState]     = useState<BotStateShape>(EMPTY_BOT_STATE);
   const [input, setInput]     = useState('');
+  const [nameFirst, setNameFirst] = useState('');
+  const [nameLast, setNameLast]   = useState('');
   const chatEndRef             = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -106,6 +128,20 @@ function useBot() {
   const addBot = (s: BotStep, ns: BotStateShape) => {
     const next = buildBotMessages(s, ns);
     setTimeout(() => setMsgs((p) => [...p, ...next]), 400);
+  };
+
+  const submitNames = () => {
+    const f = nameFirst.trim();
+    const l = nameLast.trim();
+    if (!f || !l) return;
+    addUser(`${f} ${l}`);
+    const ns = { ...state, firstName: f, lastName: l, name: `${f} ${l}`.trim() };
+    setState(ns);
+    setNameFirst('');
+    setNameLast('');
+    setInput('');
+    setStep('early_email');
+    addBot('early_email', ns);
   };
 
   const finish = (ns: BotStateShape) => {
@@ -130,7 +166,6 @@ function useBot() {
     addUser(label);
     const ns = { ...state };
 
-    if (step === 'welcome')         { ns.name = label; setState(ns); setStep('interest'); addBot('interest', ns); return; }
     if (step === 'interest')        { ns.interest = value; setState(ns);
       if (value === 'donation')     { setStep('program');       addBot('program', ns); }
       else if (value === 'explore') { setStep('explore_menu');  addBot('explore_menu', ns); }
@@ -143,36 +178,42 @@ function useBot() {
       if (value === 'programs_overview') { setStep('programs_overview'); addBot('programs_overview', ns); }
       else if (value === 'tiers_overview') { setStep('tiers_overview'); addBot('tiers_overview', ns); }
       else if (value === 'volunteer_overview') { setStep('volunteer_overview'); addBot('volunteer_overview', ns); }
-      else if (value === 'support_program' || value === 'give') { setStep('program'); addBot('program', ns); }
+      else if (value === 'support_program' || value === 'give') { ns.interest = 'donation'; setState(ns); setStep('program'); addBot('program', ns); }
       else if (value === 'start_volunteer') { ns.interest = 'volunteer'; setState(ns); setStep('volunteer_type'); addBot('volunteer_type', ns); }
       else { setStep('explore_menu'); addBot('explore_menu', ns); }
       return;
     }
     if (step === 'program')         { ns.program = value; setState(ns); setStep('donation_tier'); addBot('donation_tier', ns); return; }
-    if (step === 'donation_tier')   { ns.donationAmount = value; setState(ns); setStep('email'); addBot('email', ns); return; }
+    if (step === 'donation_tier')   { ns.donationAmount = value; setState(ns); setStep('donation_form'); addBot('donation_form', ns); return; }
+    if (step === 'donation_form' && value === 'continue_after_donation') { setStep('timeline'); addBot('timeline', ns); return; }
     if (step === 'volunteer_type')  { ns.volunteerType = value; ns.interest = value; setState(ns); setStep('volunteer_items'); addBot('volunteer_items', ns); return; }
-    if (step === 'corporate_check') { ns.program = label; setState(ns); setStep('email'); addBot('email', ns); return; }
+    if (step === 'corporate_check') { ns.program = label; setState(ns); setStep('timeline'); addBot('timeline', ns); return; }
     if (step === 'timeline')        { ns.timeline = label; setState(ns); setStep('follow_up'); addBot('follow_up', ns); return; }
     if (step === 'follow_up')       { finish(ns); return; }
     if (value === 'done')           { finish(ns); return; }
   };
 
   const handleText = () => {
-    if (!input.trim()) return;
     const val = input.trim();
+    if (!val) return;
     setInput('');
     addUser(val);
     const ns = { ...state };
-    if (step === 'welcome')          { ns.name = val; setState(ns); setStep('interest'); addBot('interest', ns); }
-    else if (['email','inkind','volunteer_items'].includes(step)) {
-      ns.email = val; setState(ns);
-      if (['inkind','volunteer_items'].includes(step) || state.interest === 'volunteer' || state.interest === 'inkind') { finish(ns); }
-      else { setStep('timeline'); addBot('timeline', ns); }
+    if (step === 'early_email') {
+      ns.email = val;
+      setState(ns);
+      setStep('interest');
+      addBot('interest', ns);
+    } else if (step === 'email') {
+      ns.email = val;
+      setState(ns);
+      setStep('timeline');
+      addBot('timeline', ns);
     }
   };
 
   const reset = () => {
-    setStep('welcome'); setState(EMPTY_BOT_STATE); setInput('');
+    setStep('welcome'); setState(EMPTY_BOT_STATE); setInput(''); setNameFirst(''); setNameLast('');
     setMsgs(buildBotMessages('welcome', EMPTY_BOT_STATE));
   };
 
@@ -181,7 +222,13 @@ function useBot() {
     [msgs],
   );
 
-  return { step, msgs, input, setInput, handleOption, handleText, reset, chatEndRef, lastBotId };
+  const lastBot = useMemo(() => msgs.filter((m) => m.role === 'bot').pop(), [msgs]);
+  const showFooterInput = step !== 'complete' && !(lastBot?.inputType && lastBot.inputType !== 'none');
+
+  return {
+    step, msgs, input, setInput, handleOption, handleText, reset, chatEndRef, lastBotId,
+    nameFirst, setNameFirst, nameLast, setNameLast, submitNames, showFooterInput,
+  };
 }
 
 /* ─── PROPS ─── */
@@ -534,7 +581,46 @@ export default function PediPlaceSite({ onLoginClick }: PediPlaceSiteProps) {
                             ))}
                           </div>
                         )}
-                        {msg.inputType && msg.inputType !== 'none' && bot.step !== 'complete' && msg.id === bot.lastBotId && (
+                        {msg.inputType === 'first_last_name' && bot.step !== 'complete' && msg.id === bot.lastBotId && (
+                          <div className="mt-2 space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="flex flex-col gap-0.5">
+                                <input
+                                  type="text"
+                                  value={bot.nameFirst}
+                                  onChange={(e) => bot.setNameFirst(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && bot.nameFirst.trim() && bot.nameLast.trim() && bot.submitNames()}
+                                  placeholder="First name"
+                                  className="text-sm border border-blue-300 rounded-xl px-2 py-2 focus:outline-none focus:border-blue-500"
+                                />
+                                <span className="text-[10px] text-gray-500 px-0.5">First Name</span>
+                              </div>
+                              <div className="flex flex-col gap-0.5">
+                                <input
+                                  type="text"
+                                  value={bot.nameLast}
+                                  onChange={(e) => bot.setNameLast(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && bot.nameFirst.trim() && bot.nameLast.trim() && bot.submitNames()}
+                                  placeholder="Last name"
+                                  className="text-sm border border-gray-200 rounded-xl px-2 py-2 focus:outline-none focus:border-blue-400"
+                                />
+                                <span className="text-[10px] text-gray-500 px-0.5">Last Name</span>
+                              </div>
+                            </div>
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={bot.submitNames}
+                                disabled={!bot.nameFirst.trim() || !bot.nameLast.trim()}
+                                style={{ backgroundColor: '#4a9fd8' }}
+                                className="text-white p-2 rounded-xl disabled:opacity-40"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {msg.inputType && msg.inputType !== 'none' && msg.inputType !== 'first_last_name' && bot.step !== 'complete' && msg.id === bot.lastBotId && (
                           <div className="mt-2 flex gap-2">
                             <input type={msg.inputType} value={bot.input}
                               onChange={(e) => bot.setInput(e.target.value)}
@@ -560,7 +646,7 @@ export default function PediPlaceSite({ onLoginClick }: PediPlaceSiteProps) {
           </div>
 
           {/* Input bar */}
-          {bot.step !== 'complete' && (
+          {bot.showFooterInput && (
             <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0">
               <div className="flex gap-2">
                 <input value={bot.input} onChange={(e) => bot.setInput(e.target.value)}

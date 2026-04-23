@@ -1,8 +1,6 @@
 import React from 'react';
 import {
-  Brain, Activity, AlertTriangle, TrendingUp, HandHeart,
-  DollarSign, ArrowUpRight, ArrowDownRight, Users, Target,
-  Stethoscope, ShieldCheck, MapPin, Bot, Trash2,
+  TrendingUp, HandHeart, DollarSign, Users, Target, MapPin, Bot, Trash2,
 } from 'lucide-react';
 import { allSponsors } from '../data/sponsorData';
 import { getStoredLeads, BotLead } from './DonorDiscovery';
@@ -60,7 +58,9 @@ const getAvatarGradient = (id: string) => {
     'from-pedi-600 to-pedi-800',
     'from-pedi-orange-300 to-pedi-500',
   ];
-  return g[parseInt(id) % g.length];
+  const numeric = Number.parseInt(id, 10);
+  const idx = Number.isNaN(numeric) ? 0 : numeric % g.length;
+  return g[idx];
 };
 
 export default function Dashboard() {
@@ -79,6 +79,49 @@ export default function Dashboard() {
   });
   const donationLeads = botLeads.filter((l) => l.donationAmount);
   const totalPotential = donationLeads.reduce((sum, l) => sum + (Number(l.donationAmount) || 0), 0);
+  const totalRaisedWithBot = totalFunding + totalPotential;
+  const donorCountWithBot = allSponsors.length + donationLeads.length;
+  const activeCountWithBot = activeSponsors.length + donationLeads.length;
+
+  const categoryWithBot = React.useMemo(() => {
+    const base = { ...categoryTotals };
+    if (totalPotential > 0) {
+      base['Bot Pledges'] = (base['Bot Pledges'] || 0) + totalPotential;
+    }
+    return Object.entries(base).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  }, [totalPotential]);
+  const maxCatWithBot = categoryWithBot[0]?.[1] ?? 1;
+
+  const topBotDonors = React.useMemo(
+    () =>
+      donationLeads
+        .filter((l) => Number(l.donationAmount) > 0)
+        .map((l, idx) => ({
+          id: `bot-${l.id}`,
+          name: l.name || l.email || `Bot Donor ${idx + 1}`,
+          contribution: Number(l.donationAmount),
+          city: '',
+          state: '',
+          avatar: (l.name || l.email || 'BD')
+            .split(' ')
+            .filter(Boolean)
+            .map((part) => part[0])
+            .join('')
+            .slice(0, 3)
+            .toUpperCase(),
+          category: 'Bot Pledge',
+          lastContact: new Date(l.timestamp).toLocaleDateString(),
+        })),
+    [donationLeads],
+  );
+  const combinedTopDonors = React.useMemo(
+    () =>
+      [...topDonors, ...topBotDonors]
+        .sort((a, b) => b.contribution - a.contribution)
+        .slice(0, 8),
+    [topBotDonors],
+  );
+  const maxContribCombined = combinedTopDonors[0]?.contribution ?? 1;
 
   const handleResetLeads = () => {
     if (!window.confirm('Reset all Donor Bot Leads? This cannot be undone.')) return;
@@ -94,7 +137,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
           <p className="text-sm text-pedi-600/70 dark:text-pedi-400/70 mt-0.5">
-            AI Symptom Checker performance, Sponsor overview &amp; Bot leads
+            Sponsor overview and donor bot pipeline activity
           </p>
         </div>
         {newLeads.length > 0 && (
@@ -168,71 +211,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Section: AI Symptom Checker ── */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-7 h-7 bg-pedi-50 dark:bg-pedi-500/10 rounded-lg flex items-center justify-center">
-            <Brain className="w-4 h-4 text-pedi-600 dark:text-pedi-400" />
-          </div>
-          <h2 className="text-sm font-bold text-gray-800 dark:text-slate-200">AI Symptom Checker</h2>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { title: 'Total Checks Run', value: '1,284', change: '+18%', trend: 'up', icon: Stethoscope, iconBg: 'bg-pedi-50 dark:bg-pedi-500/10', iconColor: 'text-pedi-600 dark:text-pedi-400' },
-            { title: 'Conditions Identified', value: '3,891', change: '+15%', trend: 'up', icon: Activity, iconBg: 'bg-pedi-100 dark:bg-pedi-600/10', iconColor: 'text-pedi-700 dark:text-pedi-300' },
-            { title: 'Urgent Cases Flagged', value: '47', change: '-8%', trend: 'down', icon: AlertTriangle, iconBg: 'bg-amber-50 dark:bg-amber-500/10', iconColor: 'text-amber-600 dark:text-amber-400' },
-            { title: 'AI Accuracy Rate', value: '94.2%', change: '+2.1%', trend: 'up', icon: ShieldCheck, iconBg: 'bg-pedi-orange-50 dark:bg-pedi-orange-500/10', iconColor: 'text-pedi-orange-600 dark:text-pedi-orange-400' },
-          ].map((stat) => (
-            <div key={stat.title} className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 hover:shadow-md dark:hover:shadow-black/20 transition-all">
-              <div className="flex items-start justify-between">
-                <div className={`w-10 h-10 ${stat.iconBg} rounded-xl flex items-center justify-center`}>
-                  <stat.icon className={`w-5 h-5 ${stat.iconColor}`} />
-                </div>
-                <span className={`flex items-center gap-0.5 text-xs font-semibold px-2 py-1 rounded-lg ${
-                  stat.trend === 'up'
-                    ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
-                    : 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10'
-                }`}>
-                  {stat.trend === 'up' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                  {stat.change}
-                </span>
-              </div>
-              <div className="mt-4">
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
-                <p className="text-sm text-gray-500 dark:text-slate-500 mt-0.5">{stat.title}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* AI top conditions quick-view */}
-        <div className="mt-4 bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5">
-          <h3 className="text-xs font-bold text-gray-700 dark:text-slate-300 mb-3">Most Frequently Identified Conditions</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: 'Respiratory Infection', pct: 28, color: 'bg-pedi-500' },
-              { label: 'Ear Infection', pct: 21, color: 'bg-pedi-600' },
-              { label: 'Fever / Viral Illness', pct: 18, color: 'bg-pedi-orange-500' },
-              { label: 'Allergic Reaction', pct: 14, color: 'bg-pedi-400' },
-              { label: 'Gastroenteritis', pct: 9, color: 'bg-pedi-orange-400' },
-              { label: 'Skin Rash', pct: 5, color: 'bg-pink-500' },
-              { label: 'Asthma Episode', pct: 3, color: 'bg-pedi-300' },
-              { label: 'Other', pct: 2, color: 'bg-slate-400' },
-            ].map((c) => (
-              <div key={c.label} className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600 dark:text-slate-400 truncate">{c.label}</span>
-                  <span className="text-xs font-semibold text-gray-800 dark:text-slate-200 ml-1">{c.pct}%</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className={`h-full ${c.color} rounded-full`} style={{ width: `${c.pct * 3}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* ── Section: Sponsors ── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -246,9 +224,9 @@ export default function Dashboard() {
         {/* Sponsor stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           {[
-            { title: 'Total Donors', value: String(allSponsors.length), change: 'All time', trend: 'up', icon: Users, iconBg: 'bg-pedi-50 dark:bg-pedi-500/10', iconColor: 'text-pedi-600 dark:text-pedi-400' },
-            { title: 'Active Donors', value: String(activeSponsors.length), change: `${Math.round(activeSponsors.length / allSponsors.length * 100)}% of total`, trend: 'up', icon: TrendingUp, iconBg: 'bg-pedi-100 dark:bg-pedi-600/10', iconColor: 'text-pedi-700 dark:text-pedi-300' },
-            { title: 'Total Raised', value: `$${(totalFunding / 1000).toFixed(0)}K`, change: `$${totalFunding.toLocaleString()}`, trend: 'up', icon: DollarSign, iconBg: 'bg-pedi-orange-50 dark:bg-pedi-orange-500/10', iconColor: 'text-pedi-orange-600 dark:text-pedi-orange-400' },
+            { title: 'Total Donors', value: String(donorCountWithBot), change: `${allSponsors.length} sponsors + ${donationLeads.length} bot`, trend: 'up', icon: Users, iconBg: 'bg-pedi-50 dark:bg-pedi-500/10', iconColor: 'text-pedi-600 dark:text-pedi-400' },
+            { title: 'Active Donors', value: String(activeCountWithBot), change: `${Math.round((activeCountWithBot / Math.max(donorCountWithBot, 1)) * 100)}% of total`, trend: 'up', icon: TrendingUp, iconBg: 'bg-pedi-100 dark:bg-pedi-600/10', iconColor: 'text-pedi-700 dark:text-pedi-300' },
+            { title: 'Total Raised', value: `$${(totalRaisedWithBot / 1000).toFixed(0)}K`, change: `$${totalRaisedWithBot.toLocaleString()}`, trend: 'up', icon: DollarSign, iconBg: 'bg-pedi-orange-50 dark:bg-pedi-orange-500/10', iconColor: 'text-pedi-orange-600 dark:text-pedi-orange-400' },
             { title: 'Pending Donors', value: String(pendingSponsors.length), change: 'Needs follow-up', trend: 'up', icon: Target, iconBg: 'bg-amber-50 dark:bg-amber-500/10', iconColor: 'text-amber-600 dark:text-amber-400' },
           ].map((stat) => (
             <div key={stat.title} className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 hover:shadow-md dark:hover:shadow-black/20 transition-all">
@@ -276,7 +254,7 @@ export default function Dashboard() {
               <p className="text-xs text-gray-400 dark:text-slate-600 mt-0.5">Ranked by total contribution</p>
             </div>
             <div className="divide-y divide-gray-50 dark:divide-slate-800/60">
-              {topDonors.map((s, idx) => (
+              {combinedTopDonors.map((s, idx) => (
                 <div key={s.id} className="px-5 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-slate-800/40 transition-colors">
                   <span className="text-xs font-bold text-gray-400 dark:text-slate-600 w-4 text-center">{idx + 1}</span>
                   <div className={`w-8 h-8 bg-gradient-to-br ${getAvatarGradient(s.id)} rounded-lg flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0`}>
@@ -303,7 +281,7 @@ export default function Dashboard() {
                     <div className="w-20 h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full mt-1.5 overflow-hidden">
                       <div
                         className="h-full bg-pedi-400 rounded-full"
-                        style={{ width: `${(s.contribution / maxContrib) * 100}%` }}
+                        style={{ width: `${(s.contribution / maxContribCombined) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -319,13 +297,13 @@ export default function Dashboard() {
               <p className="text-xs text-gray-400 dark:text-slate-600 mt-0.5">By donation category</p>
             </div>
             <div className="p-5 space-y-4">
-              {categorySorted.map(([cat, amt]) => (
+              {categoryWithBot.map(([cat, amt]) => (
                 <div key={cat}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs font-medium text-gray-700 dark:text-slate-300 truncate">{cat}</span>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                       <span className="text-xs text-gray-400 dark:text-slate-600">
-                        {Math.round((amt / totalFunding) * 100)}%
+                        {Math.round((amt / Math.max(totalRaisedWithBot, 1)) * 100)}%
                       </span>
                       <span className="text-xs font-bold text-gray-800 dark:text-slate-200">
                         ${amt >= 1000 ? `${(amt / 1000).toFixed(0)}K` : amt}
@@ -335,7 +313,7 @@ export default function Dashboard() {
                   <div className="w-full h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${CATEGORY_COLORS[cat] ?? 'bg-slate-400'}`}
-                      style={{ width: `${(amt / maxCat) * 100}%` }}
+                      style={{ width: `${(amt / maxCatWithBot) * 100}%` }}
                     />
                   </div>
                 </div>
@@ -346,8 +324,8 @@ export default function Dashboard() {
             <div className="px-5 pb-5">
               <div className="bg-gradient-to-r from-pedi-500 to-pedi-700 rounded-xl p-4 text-white">
                 <p className="text-[11px] font-medium text-pedi-100">Total Raised (All Funds)</p>
-                <p className="text-2xl font-bold mt-0.5">${(totalFunding / 1000).toFixed(1)}K</p>
-                <p className="text-[11px] text-pedi-100 mt-0.5">{allSponsors.length} unique donors</p>
+                <p className="text-2xl font-bold mt-0.5">${(totalRaisedWithBot / 1000).toFixed(1)}K</p>
+                <p className="text-[11px] text-pedi-100 mt-0.5">{donorCountWithBot} unique donors (sponsors + bot)</p>
               </div>
             </div>
           </div>

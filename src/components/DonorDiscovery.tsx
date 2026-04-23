@@ -142,7 +142,7 @@ export interface BotLead {
 }
 
 export type BotStep =
-  | 'welcome' | 'interest' | 'program' | 'donation_tier'
+  | 'welcome' | 'early_email' | 'interest' | 'program' | 'donation_tier' | 'donation_form'
   | 'volunteer_type' | 'volunteer_items' | 'corporate_check'
   | 'inkind' | 'email' | 'timeline' | 'follow_up' | 'complete'
   | 'explore_menu' | 'programs_overview' | 'tiers_overview' | 'volunteer_overview';
@@ -152,7 +152,7 @@ export interface ChatMsg {
   role: 'bot' | 'user';
   text: string;
   options?: { label: string; value: string; icon?: string }[];
-  inputType?: 'text' | 'email' | 'none';
+  inputType?: 'text' | 'email' | 'none' | 'first_last_name';
   cards?: 'programs' | 'tiers' | 'volunteer';
 }
 
@@ -227,6 +227,7 @@ const PROGRAMS = [
 ];
 
 const DONATION_TIERS = [
+  { amount: 5001, displayAmount: 'More than $5,000', displayAmountEs: 'Más de $5,000', label: 'Custom Major Gift', labelEs: 'Regalo Mayor Personalizado', impact: 'Supports high-impact priorities and urgent pediatric care needs', impactEs: 'Apoya prioridades de alto impacto y necesidades pediátricas urgentes', icon: '🌟', program: 'Custom Impact', color: 'from-fuchsia-500 to-purple-600' },
   { amount: 5000, label: 'Medical & Laboratory Supplies', labelEs: 'Suministros Médicos y de Laboratorio', impact: 'Equips the clinic with essential medical and lab supplies', impactEs: 'Equipa la clínica con suministros médicos y de laboratorio esenciales', icon: '🔬', program: 'All Programs', color: 'from-purple-500 to-indigo-600' },
   { amount: 2500, label: 'Medication & Lab Testing', labelEs: 'Medicamentos y Pruebas de Laboratorio', impact: 'Covers medications and diagnostics for uninsured children', impactEs: 'Cubre medicamentos y diagnósticos para niños sin seguro', icon: '💊', program: 'Family Care Fund', color: 'from-blue-500 to-cyan-600' },
   { amount: 1000, label: 'Annual Check-ups × 10', labelEs: 'Chequeos Anuales × 10', impact: 'Provides annual physicals for 10 uninsured children', impactEs: 'Proporciona chequeos anuales para 10 niños sin seguro', icon: '👨‍⚕️', program: 'Healthy Kids', color: 'from-teal-500 to-emerald-600' },
@@ -237,6 +238,7 @@ const DONATION_TIERS = [
   { amount: 125, label: 'Annual Checkup Gift', labelEs: 'Regalo de Chequeo Anual', impact: "One child's complete annual wellness visit", impactEs: 'Visita completa de bienestar anual para un niño', icon: '🩺', program: 'Preventive Care', color: 'from-cyan-500 to-blue-600' },
   { amount: 75, label: 'Sick Visit Care', labelEs: 'Visita por Enfermedad', impact: "Covers one child's office visit when ill", impactEs: 'Cubre la visita al consultorio de un niño cuando está enfermo', icon: '🤒', program: 'Illness to Wellness', color: 'from-indigo-500 to-violet-600' },
   { amount: 50, label: 'Mental Health Session', labelEs: 'Sesión de Salud Mental', impact: 'Provides one therapy session for a child', impactEs: 'Proporciona una sesión de terapia para un niño', icon: '🧠', program: 'Mental Health', color: 'from-violet-500 to-purple-600' },
+  { amount: 49, displayAmount: 'Less than $50', displayAmountEs: 'Menos de $50', label: 'Any Amount Helps', labelEs: 'Cualquier Cantidad Ayuda', impact: 'Every dollar helps us deliver care to uninsured children', impactEs: 'Cada dólar nos ayuda a brindar atención a niños sin seguro', icon: '🤍', program: 'Any Program', color: 'from-slate-500 to-slate-600' },
 ];
 
 const VOLUNTEER_OPTIONS = [
@@ -277,6 +279,9 @@ const COLORS: Record<string, string> = {
   orange: 'text-orange-600 bg-orange-50 dark:text-orange-400 dark:bg-orange-500/10',
 };
 
+/** Secure PCI donation checkout (Jotform) — shown after donor picks a giving level */
+const SECURE_DONATION_FORM_URL = 'https://pci.jotform.com/form/222084691016048';
+
 const SOURCE_COLORS: Record<string, string> = {
   'Foundation Directory': 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   'IRS 990': 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400',
@@ -305,19 +310,20 @@ export const saveLead = (lead: BotLead) => {
 ──────────────────────────────────────────────────── */
 export function buildBotMessages(
   step: BotStep,
-  state: { name: string; interest: string; program: string; donationAmount: string },
+  state: { name: string; firstName: string; lastName: string; interest: string; program: string; donationAmount: string },
   lang: Lang = 'en',
 ): ChatMsg[] {
   const t = lang === 'es'
     ? {
-        welcome: "👋 ¡Hola! Soy **PediBot**, el asistente de donaciones de PediPlace.\n\nConecto a donantes, voluntarios y socios corporativos con nuestros programas de salud pediátrica para niños sin seguro en Denton y Lewisville, TX.\n\n¿Cómo te llamas?",
+        welcome: "👋 ¡Hola! Soy **PediBot**, el asistente de donaciones de PediPlace.\n\nConecto a donantes, voluntarios y socios corporativos con nuestros programas de salud pediátrica para niños sin seguro en Denton y Lewisville, TX.\n\n¿Cuál es tu nombre y apellido?",
+        early_email: `¡Gracias, **${state.name}**! 😊\n\n¿Cuál es tu correo electrónico? Te enviaremos información y próximos pasos ahí.`,
         interest: `¡Mucho gusto, **${state.name}**! 😊\n\n¿Por qué estás interesado en apoyar a PediPlace hoy?`,
         program: "¡Maravilloso! 💛 PediPlace tiene varios programas que hacen una gran diferencia. ¿Qué área te interesa más?",
         donation: `Excelente elección — **${PROGRAMS.find((p) => p.id === state.program)?.titleEs || state.program}** es uno de nuestros programas más impactantes.\n\nAsí es como tu donación ayuda directamente a los niños en PediPlace. ¿Qué nivel de donación te parece adecuado?`,
         volunteer: `¡Increíble, ${state.name}! 🤝 Los voluntarios son el corazón de PediPlace.\n\n¿Qué tipo de oportunidad de voluntariado te interesa?`,
-        volunteer_items: `¡Perfecto! Esto es lo que necesitamos para **${VOLUNTEER_OPTIONS.find((v) => v.id === state.interest)?.titleEs || 'voluntariado'}**.\n\n⚠️ **Todas las donaciones deben venir ya ensambladas.**\n\n📍 Entrega en: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Lun–Vie: 9am–12pm y 2pm–4pm (cerrado al mediodía 12:30–1:30pm)\n\n¿Me puedes dar tu correo electrónico?`,
+        volunteer_items: `¡Perfecto! Esto es lo que necesitamos para **${VOLUNTEER_OPTIONS.find((v) => v.id === state.interest)?.titleEs || 'voluntariado'}**.\n\n⚠️ **Todas las donaciones deben venir ya ensambladas.**\n\n📍 Entrega en: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Lun–Vie: 9am–12pm y 2pm–4pm (cerrado al mediodía 12:30–1:30pm)\n\nTe enviaremos las instrucciones completas al correo que ya compartiste. Pulsa **Listo** cuando quieras finalizar.`,
         corporate: "¡Excelente! 🏢 Los socios corporativos y fundaciones son vitales para nuestra misión.\n\nTenemos 25 financiadores principales para PediPlace — incluyendo Robert Wood Johnson, W.K. Kellogg, Gates Foundation, y muchos en Texas.\n\n¿Cuál describe mejor a su organización?",
-        inkind: "¡Gracias por pensar en donaciones en especie! 📦 Artículos más necesarios:\n\n**Cotidianos:** Pañales, toallitas, Tylenol/Advil/Motrin, curitas, libros para niños, tarjetas de regalo de Target/Walmart\n\n**Bolsas especiales:** Merienda, recién nacidos, cumpleaños, higiene — todas preensambladas.\n\n¿Puedes compartir tu correo electrónico?",
+        inkind: "¡Gracias por pensar en donaciones en especie! 📦 Artículos más necesarios:\n\n**Cotidianos:** Pañales, toallitas, Tylenol/Advil/Motrin, curitas, libros para niños, tarjetas de regalo de Target/Walmart\n\n**Bolsas especiales:** Merienda, recién nacidos, cumpleaños, higiene — todas preensambladas.\n\nTe enviaremos la lista completa y la entrega al correo que ya compartiste. Pulsa **Listo** cuando quieras finalizar.",
         email: `¡Gracias por tu interés en **${state.program ? PROGRAMS.find((p) => p.id === state.program)?.titleEs || state.program : 'PediPlace'}**${state.donationAmount && !isNaN(Number(state.donationAmount)) ? ` y por considerar un regalo de **$${Number(state.donationAmount).toLocaleString()}**` : ''}! 🙏\n\n¿Me puedes dar tu correo electrónico para enviarte instrucciones de donación y próximos pasos?`,
         timeline: "¡Casi terminamos! ¿Cuándo estás pensando en hacer este regalo o participar?",
         followup: "Última pregunta — ¿Hay algo específico sobre lo que quisieras saber más?\n\nPor ejemplo: Cómo se usan las donaciones, recibos fiscales, clínicas escolares, salud mental, o donaciones equivalentes.",
@@ -358,16 +364,19 @@ export function buildBotMessages(
         },
         moreQ: '¿Alguna otra pregunta?',
         doneOpt: '¡Eso es todo, gracias!',
+        btnDone: 'Listo',
+        btnContinue: 'Continuar →',
       }
     : {
-        welcome: "👋 Hi there! I'm **PediBot**, PediPlace's giving assistant.\n\nI connect donors, volunteers, and corporate partners with our pediatric healthcare programs serving uninsured children in Denton & Lewisville, TX.\n\nWhat's your name?",
+        welcome: "👋 Hi there! I'm **PediBot**, PediPlace's giving assistant.\n\nI connect donors, volunteers, and corporate partners with our pediatric healthcare programs serving uninsured children in Denton & Lewisville, TX.\n\nWhat's your first and last name?",
+        early_email: `Thanks, **${state.name}**! 😊\n\nWhat's the best email address to reach you? We'll send details and next steps there.`,
         interest: `Nice to meet you, **${state.name}**! 😊\n\nWhy are you interested in supporting PediPlace today?`,
         program: "That's wonderful! 💛 PediPlace has several programs making a real difference. Which area resonates most with you?",
         donation: `Great choice — **${PROGRAMS.find((p) => p.id === state.program)?.title || state.program}** is one of our most impactful programs.\n\nHere's how your gift directly helps children at PediPlace. Which giving level feels right for you?`,
         volunteer: `Amazing, ${state.name}! 🤝 Volunteers are the heart of PediPlace.\n\nWhat type of volunteer opportunity interests you?`,
-        volunteer_items: `Perfect! Here's what we need for **${VOLUNTEER_OPTIONS.find((v) => v.id === state.interest)?.title || 'volunteering'}**.\n\n⚠️ **All donations must come already assembled.**\n\n📍 Drop-off: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Mon–Fri: 9am–12pm & 2pm–4pm (closed for lunch 12:30–1:30pm)\n\nMay I get your email to send you full instructions and confirm your drop-off?`,
+        volunteer_items: `Perfect! Here's what we need for **${VOLUNTEER_OPTIONS.find((v) => v.id === state.interest)?.title || 'volunteering'}**.\n\n⚠️ **All donations must come already assembled.**\n\n📍 Drop-off: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Mon–Fri: 9am–12pm & 2pm–4pm (closed for lunch 12:30–1:30pm)\n\nWe'll email full instructions to the address you already shared. Tap **Done** when you're ready to wrap up.`,
         corporate: "Excellent! 🏢 Corporate and foundation partners are vital to our mission.\n\nWe have a list of 25 top-matched funders for PediPlace — including foundations like Robert Wood Johnson, W.K. Kellogg, Gates Foundation, and many Texas-based funders.\n\nWhich best describes your organization?",
-        inkind: "Thank you for thinking of in-kind giving! 📦 Here's what PediPlace needs most right now:\n\n**Everyday Essentials:** Diapers, baby wipes, Tylenol/Advil/Motrin, Band-Aids, children's books, Target/Walmart gift cards\n\n**Special Bags:** Snack bags, newborn welcome bags, birthday bags, hygiene bags — all must come pre-assembled.\n\nCan you share your email? We'll send you our full supply list and drop-off instructions.",
+        inkind: "Thank you for thinking of in-kind giving! 📦 Here's what PediPlace needs most right now:\n\n**Everyday Essentials:** Diapers, baby wipes, Tylenol/Advil/Motrin, Band-Aids, children's books, Target/Walmart gift cards\n\n**Special Bags:** Snack bags, newborn welcome bags, birthday bags, hygiene bags — all must come pre-assembled.\n\nWe'll send our full supply list and drop-off info to the email you already shared. Tap **Done** when you're ready to wrap up.",
         email: `Thank you for your interest in **${state.program ? PROGRAMS.find((p) => p.id === state.program)?.title || state.program : 'PediPlace'}**${state.donationAmount && !isNaN(Number(state.donationAmount)) ? ` and considering a **$${Number(state.donationAmount).toLocaleString()}** gift` : ''}! 🙏\n\nCan I get your email address to send you donation instructions, our latest impact report, and next steps?`,
         timeline: "Almost done! When are you thinking of making this gift or getting involved?",
         followup: "One last question — is there anything specific you'd like to know more about?\n\nFor example: How donations are used, tax receipts, volunteering at our school clinics, our mental health program, or matching gifts?",
@@ -397,6 +406,8 @@ export function buildBotMessages(
         },
         moreQ: 'Any other questions?',
         doneOpt: "That's all, thank you!",
+        btnDone: 'Done',
+        btnContinue: 'Continue →',
       };
 
   const msgs: ChatMsg[] = [];
@@ -416,7 +427,10 @@ export function buildBotMessages(
 
   switch (step) {
     case 'welcome':
-      add(t.welcome, undefined, 'text');
+      add(t.welcome, undefined, 'first_last_name');
+      break;
+    case 'early_email':
+      add(t.early_email, undefined, 'email');
       break;
     case 'interest':
       add(t.interest, t.interests);
@@ -427,29 +441,62 @@ export function buildBotMessages(
     case 'donation_tier':
       add(t.donation,
         DONATION_TIERS.map((tier) => ({
-          label: `$${tier.amount.toLocaleString()} — ${lang === 'es' ? tier.labelEs : tier.label}`,
+          label: `${lang === 'es' ? (tier.displayAmountEs || tier.displayAmount || `$${tier.amount.toLocaleString()}`) : (tier.displayAmount || `$${tier.amount.toLocaleString()}`)} — ${lang === 'es' ? tier.labelEs : tier.label}`,
           value: String(tier.amount),
           icon: tier.icon,
         })));
       break;
+    case 'donation_form': {
+      const p = state.program ? PROGRAMS.find((pr) => pr.id === state.program) : undefined;
+      const programLabel =
+        lang === 'es'
+          ? (p as { titleEs?: string } | undefined)?.titleEs ?? p?.title ?? state.program
+          : p?.title ?? state.program;
+      const hasAmt = state.donationAmount && !Number.isNaN(Number(state.donationAmount));
+      const amt = hasAmt ? Number(state.donationAmount).toLocaleString() : '';
+      const thanks =
+        lang === 'es'
+          ? `¡Gracias por tu interés en **${programLabel}**${amt ? ` y por elegir un regalo de **$${amt}**` : ''}! 🙏`
+          : `Thank you for your interest in **${programLabel}**${amt ? ` and choosing a **$${amt}** gift` : ''}! 🙏`;
+      const linkIntro =
+        lang === 'es'
+          ? 'Completa tu donación de forma segura con nuestro formulario en línea:'
+          : 'Complete your donation securely using our online form:';
+      const linkLine = `[**${lang === 'es' ? 'Abrir formulario de donación →' : 'Open secure donation form →'}**](${SECURE_DONATION_FORM_URL})`;
+      const btnCont = (t as { btnContinue?: string }).btnContinue || 'Continue →';
+      add(`${thanks}\n\n${linkIntro}\n\n${linkLine}`, [{ label: btnCont, value: 'continue_after_donation', icon: '➡️' }], 'none');
+      break;
+    }
     case 'volunteer_type':
       add(t.volunteer, volunteerChoices);
       break;
-    case 'volunteer_items':
-      add(t.volunteer_items, undefined, 'email');
+    case 'volunteer_items': {
+      const btnD = (t as { btnDone?: string }).btnDone || 'Done';
+      add(t.volunteer_items, [{ label: btnD, value: 'done', icon: '✅' }], 'none');
       break;
+    }
     case 'corporate_check':
       add(t.corporate, t.corporateOpts);
       break;
-    case 'inkind':
-      add(t.inkind, undefined, 'email');
+    case 'inkind': {
+      const btnD = (t as { btnDone?: string }).btnDone || 'Done';
+      add(t.inkind, [{ label: btnD, value: 'done', icon: '✅' }], 'none');
       break;
+    }
     case 'email':
       add(t.email, undefined, 'email');
       break;
-    case 'timeline':
-      add(t.timeline, t.timelines);
+    case 'timeline': {
+      let lead = '';
+      if (state.interest === 'corporate' && state.program) {
+        lead =
+          lang === 'es'
+            ? `Gracias por indicar que su organización se describe mejor como: **${state.program}**.\n\n`
+            : `Thanks for sharing that your organization is best described as: **${state.program}**.\n\n`;
+      }
+      add(lead + t.timeline, t.timelines);
       break;
+    }
     case 'follow_up':
       add(t.followup, t.followupOpts);
       break;
@@ -597,7 +644,6 @@ function scoreOrg(org: ProPublicaOrg): { score: number; reasons: string[]; badge
 export default function DonorDiscovery({
   publicMode = false, darkMode = false, onToggleDark, onLoginClick,
 }: DonorDiscoveryProps) {
-  const [mainTab, setMainTab] = useState<'bot' | 'discover'>(publicMode ? 'bot' : 'discover');
   const [lang, setLang] = useState<Lang>('en');
   const t = useTranslation(lang);
 
@@ -620,8 +666,20 @@ export default function DonorDiscovery({
   /* ── Bot state ── */
   const [botStep, setBotStep] = useState<BotStep>('welcome');
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [botState, setBotState] = useState({ name: '', email: '', interest: '', program: '', donationAmount: '', timeline: '', volunteerType: '' });
+  const [botState, setBotState] = useState({
+    firstName: '',
+    lastName: '',
+    name: '',
+    email: '',
+    interest: '',
+    program: '',
+    donationAmount: '',
+    timeline: '',
+    volunteerType: '',
+  });
   const [textInput, setTextInput] = useState('');
+  const [nameFirstInput, setNameFirstInput] = useState('');
+  const [nameLastInput, setNameLastInput] = useState('');
   const [botLeads, setBotLeads] = useState<BotLead[]>(getStoredLeads());
   const chatEndRef = useRef<HTMLDivElement>(null);
   const irsEmailStepRef = useRef<HTMLDivElement>(null);
@@ -702,17 +760,36 @@ export default function DonorDiscovery({
     [messages],
   );
 
+  const lastBotMsg = useMemo(
+    () => messages.filter((m) => m.role === 'bot').pop(),
+    [messages],
+  );
+  /** Hide sticky footer when the active bot bubble already has inline inputs */
+  const showFooterTextInput =
+    botStep !== 'complete' && !(lastBotMsg?.inputType && lastBotMsg.inputType !== 'none');
+
+  const submitFirstLastName = () => {
+    const first = nameFirstInput.trim();
+    const last = nameLastInput.trim();
+    if (!first || !last) return;
+    addUserMessage(`${first} ${last}`);
+    const ns = {
+      ...botState,
+      firstName: first,
+      lastName: last,
+      name: `${first} ${last}`.trim(),
+    };
+    setBotState(ns);
+    setNameFirstInput('');
+    setNameLastInput('');
+    setTextInput('');
+    setBotStep('early_email');
+    addBotMessages('early_email', ns);
+  };
+
   const handleOption = (value: string, label: string) => {
     addUserMessage(label);
     const ns = { ...botState };
-
-    if (botStep === 'welcome') {
-      ns.name = textInput || label;
-      setBotState(ns);
-      setBotStep('interest');
-      addBotMessages('interest', ns);
-      return;
-    }
 
     if (botStep === 'interest') {
       ns.interest = value;
@@ -791,8 +868,14 @@ export default function DonorDiscovery({
     if (botStep === 'donation_tier') {
       ns.donationAmount = value;
       setBotState(ns);
-      setBotStep('email');
-      addBotMessages('email', ns);
+      setBotStep('donation_form');
+      addBotMessages('donation_form', ns);
+      return;
+    }
+
+    if (botStep === 'donation_form' && value === 'continue_after_donation') {
+      setBotStep('timeline');
+      addBotMessages('timeline', ns);
       return;
     }
 
@@ -808,8 +891,8 @@ export default function DonorDiscovery({
     if (botStep === 'corporate_check') {
       ns.program = label;
       setBotState(ns);
-      setBotStep('email');
-      addBotMessages('email', ns);
+      setBotStep('timeline');
+      addBotMessages('timeline', ns);
       return;
     }
 
@@ -854,26 +937,22 @@ export default function DonorDiscovery({
   };
 
   const handleTextSubmit = () => {
-    if (!textInput.trim()) return;
     const val = textInput.trim();
+    if (!val) return;
     setTextInput('');
     addUserMessage(val);
     const ns = { ...botState };
 
-    if (botStep === 'welcome') {
-      ns.name = val;
+    if (botStep === 'early_email') {
+      ns.email = val;
       setBotState(ns);
       setBotStep('interest');
       addBotMessages('interest', ns);
-    } else if (botStep === 'email' || botStep === 'inkind' || botStep === 'volunteer_items') {
+    } else if (botStep === 'email') {
       ns.email = val;
       setBotState(ns);
-      if (botState.interest === 'volunteer' || botState.interest === 'inkind' || botStep === 'inkind' || botStep === 'volunteer_items') {
-        finishBot(ns);
-      } else {
-        setBotStep('timeline');
-        addBotMessages('timeline', ns);
-      }
+      setBotStep('timeline');
+      addBotMessages('timeline', ns);
     }
   };
 
@@ -910,10 +989,22 @@ export default function DonorDiscovery({
   };
 
   const resetBot = () => {
-    const empty = { name: '', email: '', interest: '', program: '', donationAmount: '', timeline: '', volunteerType: '' };
+    const empty = {
+      firstName: '',
+      lastName: '',
+      name: '',
+      email: '',
+      interest: '',
+      program: '',
+      donationAmount: '',
+      timeline: '',
+      volunteerType: '',
+    };
     setBotStep('welcome');
     setBotState(empty);
     setTextInput('');
+    setNameFirstInput('');
+    setNameLastInput('');
     setMessages(buildBotMessages('welcome', empty, lang));
   };
 
@@ -1202,12 +1293,7 @@ PediPlace | [Phone] | [Email] | pediplace.org`
               <div>
                 <span className="hidden sm:inline text-sm font-semibold text-gray-500 dark:text-slate-400">{t.tagline}</span>
               </div>
-              <div className="hidden md:flex items-center gap-2 ml-2">
-                <span className="text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                  <CheckCircle className="w-3 h-3" /> {t.realIRS}
-                </span>
-                <span className="text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 rounded-full">{t.nonprofits}</span>
-              </div>
+              {/* Public bot header intentionally keeps only core branding */}
             </div>
             <div className="flex items-center gap-2">
               {/* EN / ESP language toggle */}
@@ -1235,48 +1321,36 @@ PediPlace | [Phone] | [Email] | pediplace.org`
         </header>
       )}
 
-      {/* ═══ STATS BAR ═══ */}
+      {/* ═══ STATS BAR — bot lead metrics only on public site; Interest Checker shows funder pipeline stats only ═══ */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-6">
-          {[
-            { label: t.statLeads, value: botLeads.length, color: 'text-violet-600 dark:text-violet-400' },
-            { label: t.statPipeline, value: pipelineCount, color: 'text-blue-600 dark:text-blue-400' },
-            { label: t.statContacted, value: contactedCount, color: 'text-amber-600 dark:text-amber-400' },
-            { label: t.statDonors, value: botLeads.filter((l) => l.donationAmount).length, color: 'text-emerald-600 dark:text-emerald-400' },
-          ].map((s) => (
+          {(publicMode
+            ? [
+                { label: t.statLeads, value: botLeads.length, color: 'text-violet-600 dark:text-violet-400' },
+                { label: t.statPipeline, value: pipelineCount, color: 'text-blue-600 dark:text-blue-400' },
+                { label: t.statContacted, value: contactedCount, color: 'text-amber-600 dark:text-amber-400' },
+                { label: t.statDonors, value: botLeads.filter((l) => l.donationAmount).length, color: 'text-emerald-600 dark:text-emerald-400' },
+              ]
+            : [
+                { label: t.statPipeline, value: pipelineCount, color: 'text-blue-600 dark:text-blue-400' },
+                { label: t.statContacted, value: contactedCount, color: 'text-amber-600 dark:text-amber-400' },
+                { label: t.statCuratedFunders, value: curatedFunders.length, color: 'text-violet-600 dark:text-violet-400' },
+              ]
+          ).map((s) => (
             <div key={s.label} className="text-center flex-1 border-r last:border-r-0 border-gray-100 dark:border-slate-800">
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
               <p className="text-[10px] font-bold text-gray-400 dark:text-slate-600 tracking-wider mt-0.5">{s.label}</p>
             </div>
           ))}
-          <div className="flex items-center gap-2 pl-2">
-            <button onClick={exportCSV} className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3 py-2 rounded-xl border border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-100 transition-colors">
-              <Download className="w-3.5 h-3.5" /> {t.exportLeads}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ MAIN TABS ═══ */}
-      <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800">
-        <div className="max-w-6xl mx-auto px-6 flex gap-1">
-          {([
-            { id: 'bot', label: t.tabBot, icon: <Bot className="w-4 h-4" />, adminOnly: false },
-            { id: 'discover', label: t.tabDiscover, icon: <Search className="w-4 h-4" />, adminOnly: false },
-          ] as const).filter((tab) => publicMode || tab.id !== 'bot').map((tab) => (
-            <button key={tab.id} onClick={() => setMainTab(tab.id)}
-              className={`flex items-center gap-2 py-4 px-3 text-sm font-semibold border-b-2 transition-colors ${mainTab === tab.id ? 'border-blue-600 text-blue-600 dark:border-cyan-400 dark:text-cyan-400' : 'border-transparent text-gray-500 dark:text-slate-500 hover:text-gray-700 dark:hover:text-slate-300'}`}>
-              {tab.icon}{tab.label}
-            </button>
-          ))}
+          {/* Export hidden in public donor prospect bot view */}
         </div>
       </div>
 
       {/* ═══ TAB CONTENT ═══ */}
       <div className="flex-1 max-w-6xl mx-auto w-full px-6 py-6">
 
-        {/* ──────── DONOR BOT TAB ──────── */}
-        {mainTab === 'bot' && (
+        {/* ──────── DONOR BOT — public site only (admin uses Discover Funders below) ──────── */}
+        {publicMode && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
             {/* Chat panel */}
@@ -1344,7 +1418,7 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                                     <span className="text-xl flex-shrink-0">{tier.icon}</span>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold text-gray-900 dark:text-white">${tier.amount.toLocaleString()}</span>
+                                        <span className="text-sm font-bold text-gray-900 dark:text-white">{lang === 'es' ? (tier.displayAmountEs || tier.displayAmount || `$${tier.amount.toLocaleString()}`) : (tier.displayAmount || `$${tier.amount.toLocaleString()}`)}</span>
                                         <span className="text-xs font-semibold text-gray-600 dark:text-slate-400 truncate">{lang === 'es' ? tier.labelEs : tier.label}</span>
                                       </div>
                                       <p className="text-[11px] text-gray-500 dark:text-slate-500 leading-snug">{lang === 'es' ? tier.impactEs : tier.impact}</p>
@@ -1393,7 +1467,51 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                               ))}
                             </div>
                           )}
-                          {msg.inputType && msg.inputType !== 'none' && botStep !== 'complete' && msg.id === lastBotMsgId && (
+                          {msg.inputType === 'first_last_name' && botStep !== 'complete' && msg.id === lastBotMsgId && (
+                            <div className="mt-3 flex flex-col gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+                                <div className="flex flex-col gap-1">
+                                  <input
+                                    type="text"
+                                    value={nameFirstInput}
+                                    onChange={(e) => setNameFirstInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && (nameFirstInput.trim() && nameLastInput.trim() ? submitFirstLastName() : undefined)}
+                                    placeholder={lang === 'es' ? 'Nombre' : 'First name'}
+                                    autoComplete="given-name"
+                                    className="text-sm bg-white dark:bg-slate-700 border border-blue-400 dark:border-cyan-500/50 text-gray-800 dark:text-slate-200 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 dark:focus:border-cyan-400 placeholder-gray-400"
+                                  />
+                                  <span className="text-[10px] font-medium text-gray-500 dark:text-slate-500 px-0.5">
+                                    {lang === 'es' ? 'Nombre' : 'First Name'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                  <input
+                                    type="text"
+                                    value={nameLastInput}
+                                    onChange={(e) => setNameLastInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && (nameFirstInput.trim() && nameLastInput.trim() ? submitFirstLastName() : undefined)}
+                                    placeholder={lang === 'es' ? 'Apellido' : 'Last name'}
+                                    autoComplete="family-name"
+                                    className="text-sm bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-gray-800 dark:text-slate-200 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-400 dark:focus:border-cyan-500/60 placeholder-gray-400"
+                                  />
+                                  <span className="text-[10px] font-medium text-gray-500 dark:text-slate-500 px-0.5">
+                                    {lang === 'es' ? 'Apellido' : 'Last Name'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={submitFirstLastName}
+                                  disabled={!nameFirstInput.trim() || !nameLastInput.trim()}
+                                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white p-2.5 rounded-xl transition-colors"
+                                >
+                                  <Send className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {msg.inputType && msg.inputType !== 'none' && msg.inputType !== 'first_last_name' && botStep !== 'complete' && msg.id === lastBotMsgId && (
                             <div className="mt-3 flex gap-2">
                               <input
                                 type={msg.inputType}
@@ -1420,8 +1538,8 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Input area */}
-              {botStep !== 'complete' && (
+              {/* Input area — hidden when the latest bot message uses inline inputs */}
+              {showFooterTextInput && (
                 <div className="px-5 py-3 border-t border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
                   <div className="flex items-center gap-2">
                     <input value={textInput} onChange={(e) => setTextInput(e.target.value)}
@@ -1472,34 +1590,12 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                 </div>
               </div>
 
-              {/* Recent leads — admin only */}
-              {!publicMode && <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{t.recentLeads}</p>
-                  <span className="text-[11px] font-bold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 px-2 py-0.5 rounded-full">{botLeads.length} total</span>
-                </div>
-                {botLeads.length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-slate-600 text-center py-4">{t.noLeads}</p>
-                ) : (
-                  <div className="space-y-2 max-h-52 overflow-y-auto">
-                    {botLeads.slice(0, 6).map((lead) => (
-                      <div key={lead.id} className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-slate-800 last:border-b-0">
-                        <div>
-                          <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">{lead.name || 'Anonymous'}</p>
-                          <p className="text-[11px] text-gray-400 dark:text-slate-600">{lead.interest} {lead.donationAmount && !isNaN(Number(lead.donationAmount)) && `· $${Number(lead.donationAmount).toLocaleString()}`}</p>
-                        </div>
-                        <span className="text-[10px] text-gray-400 dark:text-slate-600">{new Date(lead.timestamp).toLocaleDateString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>}
             </div>
           </div>
         )}
 
-        {/* ──────── DISCOVER FUNDERS TAB ──────── */}
-        {mainTab === 'discover' && (
+        {/* ──────── DISCOVER FUNDERS (admin only) ──────── */}
+        {!publicMode && (
           <>
             {/* Sub-tabs */}
             <div className="flex items-center border-b border-gray-200 dark:border-slate-700 mb-5">
@@ -2205,8 +2301,8 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                   className="flex items-center gap-2 bg-white text-blue-600 text-sm font-bold px-6 py-3 rounded-xl hover:bg-blue-50 transition-colors shadow-sm">
                   <Heart className="w-4 h-4" /> {t.ctaDonate}
                 </a>
-                <button onClick={() => setMainTab('bot')}
-                  className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white text-sm font-semibold px-6 py-3 rounded-xl transition-colors">
+                <button type="button"
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white text-sm font-semibold px-6 py-3 rounded-xl transition-colors opacity-50 cursor-not-allowed">
                   <Bot className="w-4 h-4" /> {t.ctaBot}
                 </button>
               </div>

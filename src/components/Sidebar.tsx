@@ -1,5 +1,4 @@
-import React from 'react';
-import { BarChart3, HandHeart, Settings, LogOut, Sun, Moon, Bot, Heart } from 'lucide-react';
+import { BarChart3, HandHeart, Settings, LogOut, Sun, Moon, Bot, Heart, Inbox } from 'lucide-react';
 import { AuthUser } from './LoginPage';
 
 interface SidebarProps {
@@ -12,11 +11,16 @@ interface SidebarProps {
 }
 
 const menuItems = [
-  { id: 'dashboard',  label: 'Dashboard',                   icon: BarChart3  },
-  { id: 'donor_bot',  label: 'Pediplace Interest Checker',  icon: Bot        },
-  { id: 'sponsors',   label: 'Donors',                      icon: HandHeart  },
-  { id: 'settings',   label: 'Settings',                    icon: Settings   },
-];
+  { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+  { id: 'donor_bot', label: 'Pediplace Interest Checker', icon: Bot },
+] as const;
+
+const donorSubItems = [
+  { id: 'sponsors', label: 'Partner sponsors', icon: HandHeart },
+  { id: 'bot_leads', label: 'Recent Bot Leads', icon: Inbox },
+] as const;
+
+const settingsItem = { id: 'settings' as const, label: 'Settings', icon: Settings };
 
 export default function Sidebar({ activeTab, onTabChange, user, onLogout, darkMode, onToggleDark }: SidebarProps) {
   const initials = `${user.firstName[0]}${user.lastName[0]}`;
@@ -68,6 +72,7 @@ export default function Sidebar({ activeTab, onTabChange, user, onLogout, darkMo
             return (
               <li key={item.id}>
                 <button
+                  type="button"
                   onClick={() => onTabChange(item.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all text-sm font-medium group ${
                     isActive
@@ -91,6 +96,66 @@ export default function Sidebar({ activeTab, onTabChange, user, onLogout, darkMo
               </li>
             );
           })}
+          <li className="pt-2 mt-2 border-t border-gray-100 dark:border-slate-800">
+            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-600 uppercase tracking-widest px-3 py-1.5">
+              Donors
+            </p>
+            <ul className="space-y-0.5 pl-0">
+              {donorSubItems.map((item) => {
+                const isActive = activeTab === item.id;
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => onTabChange(item.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all text-sm font-medium group border ${
+                        isActive
+                          ? 'bg-pedi-50 dark:bg-pedi-500/10 text-pedi-700 dark:text-pedi-400 border-pedi-200 dark:border-pedi-500/20'
+                          : 'text-gray-600 dark:text-slate-400 hover:text-pedi-700 dark:hover:text-pedi-300 hover:bg-pedi-50/60 dark:hover:bg-slate-800/60 border-transparent'
+                      }`}
+                    >
+                      <item.icon
+                        className={`flex-shrink-0 transition-colors ml-1 ${
+                          isActive
+                            ? 'text-pedi-600 dark:text-pedi-400'
+                            : 'text-gray-400 dark:text-slate-500 group-hover:text-pedi-500 dark:group-hover:text-pedi-400'
+                        }`}
+                        style={{ width: '16px', height: '16px' }}
+                      />
+                      <span className="flex-1">{item.label}</span>
+                      {isActive && (
+                        <span className="w-1.5 h-1.5 bg-pedi-500 dark:bg-pedi-400 rounded-full flex-shrink-0" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </li>
+          <li className="pt-1">
+            <button
+              type="button"
+              onClick={() => onTabChange(settingsItem.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all text-sm font-medium group ${
+                activeTab === settingsItem.id
+                  ? 'bg-pedi-50 dark:bg-pedi-500/10 text-pedi-700 dark:text-pedi-400 border border-pedi-200 dark:border-pedi-500/20'
+                  : 'text-gray-600 dark:text-slate-400 hover:text-pedi-700 dark:hover:text-pedi-300 hover:bg-pedi-50/60 dark:hover:bg-slate-800/60 border border-transparent'
+              }`}
+            >
+              <settingsItem.icon
+                className={`flex-shrink-0 transition-colors ${
+                  activeTab === settingsItem.id
+                    ? 'text-pedi-600 dark:text-pedi-400'
+                    : 'text-gray-400 dark:text-slate-500 group-hover:text-pedi-500 dark:group-hover:text-pedi-400'
+                }`}
+                style={{ width: '16px', height: '16px' }}
+              />
+              <span className="flex-1">{settingsItem.label}</span>
+              {activeTab === settingsItem.id && (
+                <span className="w-1.5 h-1.5 bg-pedi-500 dark:bg-pedi-400 rounded-full flex-shrink-0" />
+              )}
+            </button>
+          </li>
         </ul>
       </nav>
 

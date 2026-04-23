@@ -13,6 +13,7 @@ const T = {
     statPipeline: 'IN PIPELINE',
     statContacted: 'CONTACTED',
     statDonors: 'DONORS',
+    statCuratedFunders: 'MATCHED FUNDERS',
     exportLeads: 'Export Leads',
 
     /* ── Main tabs ── */
@@ -135,6 +136,7 @@ const T = {
     statPipeline: 'EN PROCESO',
     statContacted: 'CONTACTADOS',
     statDonors: 'DONANTES',
+    statCuratedFunders: 'FINANCIADORES',
     exportLeads: 'Exportar Contactos',
 
     /* ── Main tabs ── */

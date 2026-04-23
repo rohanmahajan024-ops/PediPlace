@@ -6,7 +6,7 @@ import SponsorList from './components/SponsorList';
 import SponsorChatInterface from './components/SponsorChatInterface';
 import SettingsPage from './components/SettingsPage';
 import DonorDiscovery from './components/DonorDiscovery';
-import PediPlaceSite from './components/PediPlaceSite';
+import BotLeadsPage from './components/BotLeadsPage';
 import { HandHeart } from 'lucide-react';
 import { Sponsor } from './types/sponsor';
 
@@ -96,6 +96,9 @@ function App() {
             )}
           </div>
         );
+
+      case 'bot_leads':
+        return <BotLeadsPage />;
 
       case 'settings':
         return (
