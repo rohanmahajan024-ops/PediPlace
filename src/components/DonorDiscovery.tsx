@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Search, Download, CheckCircle, Plus, Send, Bot, X, Activity,
   Sun, Moon, LogIn, Filter, ExternalLink, Clipboard, ClipboardCheck,
@@ -22,9 +22,19 @@ interface DonorDiscoveryProps {
   onLoginClick?: () => void;
 }
 
+type PipelineStatus = 'cold' | 'contacted' | 'responded' | 'awarded';
+type ResponseReceived = 'No Response' | 'Interested' | 'Declined' | 'Awarded';
+
 interface PipelineEntry extends CuratedFunder {
-  pipelineStatus: 'pipeline' | 'contacted' | 'responded' | 'donated';
+  pipelineStatus: PipelineStatus;
+  addedAt: string;
+  responseReceived: ResponseReceived;
+  amountAwarded: number;
+  emailAttempts: number;
+  notes: string;
 }
+
+const PIPELINE_STORAGE_KEY = 'pediplace_curated_pipeline_v2';
 
 interface ProPublicaOrg {
   ein: string;
@@ -53,10 +63,15 @@ interface ScanResult extends ProPublicaOrg {
 interface IRSPipelineEntry {
   id: string;
   org: ProPublicaOrg & { relevanceScore?: number; matchBadge?: string };
-  status: 'new' | 'contacted' | 'responded' | 'donated';
+  status: PipelineStatus;
   notes: string;
   addedAt: string;
+  responseReceived: ResponseReceived;
+  amountAwarded: number;
+  emailAttempts: number;
 }
+
+const IRS_PIPELINE_STORAGE_KEY = 'pediplace_irs_pipeline_v2';
 
 const US_STATES = [
   ['TX','Texas'],['CA','California'],['NY','New York'],['FL','Florida'],['IL','Illinois'],
@@ -242,7 +257,7 @@ const DONATION_TIERS = [
 ];
 
 const VOLUNTEER_OPTIONS = [
-  { id: 'book', title: 'Book Donations', titleEs: 'Donación de Libros', icon: '📚', description: "Donate any new books to help build children's home libraries.", descriptionEs: 'Dona libros nuevos para ayudar a construir bibliotecas caseras para niños.', items: ["Any new children's books (all ages welcome)"], itemsEs: ['Cualquier libro nuevo para niños (todas las edades)'] },
+  { id: 'book', title: 'Book Donations', titleEs: 'Donación de Libros', icon: '📚', description: "Donate any new books to help build children's home libraries.", descriptionEs: 'Dona libros nuevos para ayudar a construir bibliotecas caseras para niños.', items: ["Any new children's books (all ages welcome)", 'Bilingual books especially needed'], itemsEs: ['Cualquier libro nuevo para niños (todas las edades)', 'Libros bilingües especialmente necesarios'], details: 'We accept new books for all ages, and bilingual books are also needed.', detailsEs: 'Aceptamos libros nuevos para todas las edades, y también necesitamos libros bilingües.', noAssembly: true },
   { id: 'snack-bags', title: 'Patient Snack Bags', titleEs: 'Bolsas de Merienda para Pacientes', icon: '🎒', description: 'Pre-assembled snack bags for patients visiting the clinic.', descriptionEs: 'Bolsas de merienda preensambladas para pacientes que visitan la clínica.', items: ['Cheese crackers', 'Peanut butter crackers', 'Granola bars', 'Baked potato chips', 'Applesauce pouches', 'Tuna fish', 'Trail mix', 'Pretzels', 'Fruit snacks', 'Juice boxes'], itemsEs: ['Galletas de queso', 'Galletas de mantequilla de maní', 'Barras de granola', 'Papas fritas horneadas', 'Bolsas de puré de manzana', 'Atún', 'Mezcla de frutos secos', 'Pretzels', 'Bocadillos de frutas', 'Jugos'] },
   { id: 'newborn-bags', title: 'Newborn Welcome Bags', titleEs: 'Bolsas de Bienvenida para Recién Nacidos', icon: '👶', description: 'Essentials for new families with newborns in our Healthy Babies program.', descriptionEs: 'Artículos esenciales para nuevas familias con recién nacidos en nuestro programa Bebés Saludables.', items: ['Baby wipes', 'Onesies', 'Socks', 'Diapers', 'Pacifiers', 'Thermometer', 'Mittens', 'Gift bags'], itemsEs: ['Toallitas para bebé', 'Mameluco (onesie)', 'Calcetines', 'Pañales', 'Chupones', 'Termómetro', 'Mitones', 'Bolsas de regalo'] },
   { id: 'birthday-bags', title: 'Birthday Celebration Bags', titleEs: 'Bolsas de Cumpleaños', icon: '🎂', description: 'Make a birthday special for children who might not otherwise celebrate.', descriptionEs: 'Haz especial el cumpleaños de niños que de otro modo no podrían celebrar.', items: ['1 box cake mix', '1 tub frosting', 'Small bottle of oil', 'Sprinkles & decorations', 'Foil baking pan', 'Birthday candles', 'Birthday plates & napkins', 'Birthday bag'], itemsEs: ['1 caja de mezcla para pastel', '1 tarro de betún', 'Botella pequeña de aceite', 'Chispas y decoraciones', 'Molde de papel aluminio', 'Velas de cumpleaños', 'Platos y servilletas de cumpleaños', 'Bolsa de cumpleaños'] },
@@ -310,7 +325,7 @@ export const saveLead = (lead: BotLead) => {
 ──────────────────────────────────────────────────── */
 export function buildBotMessages(
   step: BotStep,
-  state: { name: string; firstName: string; lastName: string; interest: string; program: string; donationAmount: string },
+  state: { name: string; firstName: string; lastName: string; interest: string; program: string; donationAmount: string; volunteerType?: string },
   lang: Lang = 'en',
 ): ChatMsg[] {
   const t = lang === 'es'
@@ -320,13 +335,20 @@ export function buildBotMessages(
         interest: `¡Mucho gusto, **${state.name}**! 😊\n\n¿Por qué estás interesado en apoyar a PediPlace hoy?`,
         program: "¡Maravilloso! 💛 PediPlace tiene varios programas que hacen una gran diferencia. ¿Qué área te interesa más?",
         donation: `Excelente elección — **${PROGRAMS.find((p) => p.id === state.program)?.titleEs || state.program}** es uno de nuestros programas más impactantes.\n\nAsí es como tu donación ayuda directamente a los niños en PediPlace. ¿Qué nivel de donación te parece adecuado?`,
-        volunteer: `¡Increíble, ${state.name}! 🤝 Los voluntarios son el corazón de PediPlace.\n\n¿Qué tipo de oportunidad de voluntariado te interesa?`,
-        volunteer_items: `¡Perfecto! Esto es lo que necesitamos para **${VOLUNTEER_OPTIONS.find((v) => v.id === state.interest)?.titleEs || 'voluntariado'}**.\n\n⚠️ **Todas las donaciones deben venir ya ensambladas.**\n\n📍 Entrega en: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Lun–Vie: 9am–12pm y 2pm–4pm (cerrado al mediodía 12:30–1:30pm)\n\nTe enviaremos las instrucciones completas al correo que ya compartiste. Pulsa **Listo** cuando quieras finalizar.`,
+        volunteer: `¡Increíble, ${state.name}! 🤝 Los voluntarios son el corazón de PediPlace.\n\nYa sea que quieras donar suministros, ensamblar bolsas de cuidado o apoyar a las familias en nuestra clínica, hay un lugar para ti. Elige la opción que más te interese y compartiremos la lista de suministros y los próximos pasos.\n\n¿Qué tipo de oportunidad de voluntariado te interesa?`,
+        volunteer_items: (() => {
+          const volId = state.volunteerType || state.interest;
+          const opt = VOLUNTEER_OPTIONS.find((v) => v.id === volId) as (typeof VOLUNTEER_OPTIONS)[number] & { detailsEs?: string; noAssembly?: boolean } | undefined;
+          const title = opt?.titleEs || 'voluntariado';
+          const detailsLine = opt?.detailsEs ? `${opt.detailsEs}\n\n` : '';
+          const assemblyLine = opt?.noAssembly ? '' : '📦 **¿Quieres conocer todos los detalles?** Tenemos lista la lista completa de suministros — te la enviaremos directamente a tu correo para que no se te escape nada (y recuerda, las bolsas deben venir ya armadas).\n\n';
+          return `¡Perfecto! Esto es lo que necesitamos para **${title}**.\n\n${detailsLine}${assemblyLine}📍 Entrega en: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Lun–Vie: 9am–12pm y 2pm–4pm (cerrado al mediodía 12:30–1:30pm)\n\nTe enviaremos las instrucciones completas al correo que ya compartiste. Pulsa **Listo** cuando quieras finalizar.`;
+        })(),
         corporate: "¡Excelente! 🏢 Los socios corporativos y fundaciones son vitales para nuestra misión.\n\nTenemos 25 financiadores principales para PediPlace — incluyendo Robert Wood Johnson, W.K. Kellogg, Gates Foundation, y muchos en Texas.\n\n¿Cuál describe mejor a su organización?",
         inkind: "¡Gracias por pensar en donaciones en especie! 📦 Artículos más necesarios:\n\n**Cotidianos:** Pañales, toallitas, Tylenol/Advil/Motrin, curitas, libros para niños, tarjetas de regalo de Target/Walmart\n\n**Bolsas especiales:** Merienda, recién nacidos, cumpleaños, higiene — todas preensambladas.\n\nTe enviaremos la lista completa y la entrega al correo que ya compartiste. Pulsa **Listo** cuando quieras finalizar.",
         email: `¡Gracias por tu interés en **${state.program ? PROGRAMS.find((p) => p.id === state.program)?.titleEs || state.program : 'PediPlace'}**${state.donationAmount && !isNaN(Number(state.donationAmount)) ? ` y por considerar un regalo de **$${Number(state.donationAmount).toLocaleString()}**` : ''}! 🙏\n\n¿Me puedes dar tu correo electrónico para enviarte instrucciones de donación y próximos pasos?`,
         timeline: "¡Casi terminamos! ¿Cuándo estás pensando en hacer este regalo o participar?",
-        followup: "Última pregunta — ¿Hay algo específico sobre lo que quisieras saber más?\n\nPor ejemplo: Cómo se usan las donaciones, recibos fiscales, clínicas escolares, salud mental, o donaciones equivalentes.",
+        followup: "Antes de despedirnos — ¿te gustaría conocer otras formas de ofrecerte como voluntario en PediPlace? Elige una para ver lo que se necesita, o dinos que ya estás listo.",
         complete: `🎉 ¡Muchas gracias, **${state.name}**!\n\nHemos recibido tu interés y nos pondremos en contacto en **2 días hábiles**.\n\n📧 Te enviaremos los detalles a tu correo pronto.\n\n**¿Listo para donar ahora?** Dona directamente en [pediplace.org](https://www.pediplace.org)\n📞 ¿Preguntas? Llámanos: **972-436-7962**\n📍 502 S. Old Orchard Lane, #126, Lewisville, TX 75067`,
         interests: [
           { label: 'Hacer una donación monetaria', value: 'donation', icon: '💛' },
@@ -348,20 +370,6 @@ export function buildBotMessages(
           { label: 'Subvención gubernamental / federal', value: 'government', icon: '🏛️' },
           { label: 'Otra organización', value: 'other', icon: '📋' },
         ],
-        followupOpts: [
-          { label: '¿Cómo se usan las donaciones?', value: 'usage', icon: '📊' },
-          { label: '¿Es deducible de impuestos?', value: 'tax', icon: '📋' },
-          { label: 'Cuéntame sobre las clínicas escolares', value: 'school', icon: '🏫' },
-          { label: 'Donaciones equivalentes corporativas', value: 'matching', icon: '✖️' },
-          { label: 'Sin más preguntas', value: 'none', icon: '✅' },
-        ],
-        followupAnswers: {
-          usage: 'El 100% de tu donación va directamente a la atención del paciente.',
-          tax: '¡Sí! PediPlace es una organización 501(c)(3) registrada. Tu recibo será enviado por correo dentro de 24 horas.',
-          school: 'Tenemos clínicas dentro de la Escuela Primaria Central (LISD) y la Escuela Secundaria Fred Moore (DISD).',
-          matching: '¡Muchos empleadores igualan tu donación! Pregunta a tu departamento de Recursos Humanos.',
-          none: '¡No hay problema! Te enviaremos todo lo que necesitas por correo electrónico.',
-        },
         moreQ: '¿Alguna otra pregunta?',
         doneOpt: '¡Eso es todo, gracias!',
         btnDone: 'Listo',
@@ -373,13 +381,20 @@ export function buildBotMessages(
         interest: `Nice to meet you, **${state.name}**! 😊\n\nWhy are you interested in supporting PediPlace today?`,
         program: "That's wonderful! 💛 PediPlace has several programs making a real difference. Which area resonates most with you?",
         donation: `Great choice — **${PROGRAMS.find((p) => p.id === state.program)?.title || state.program}** is one of our most impactful programs.\n\nHere's how your gift directly helps children at PediPlace. Which giving level feels right for you?`,
-        volunteer: `Amazing, ${state.name}! 🤝 Volunteers are the heart of PediPlace.\n\nWhat type of volunteer opportunity interests you?`,
-        volunteer_items: `Perfect! Here's what we need for **${VOLUNTEER_OPTIONS.find((v) => v.id === state.interest)?.title || 'volunteering'}**.\n\n⚠️ **All donations must come already assembled.**\n\n📍 Drop-off: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Mon–Fri: 9am–12pm & 2pm–4pm (closed for lunch 12:30–1:30pm)\n\nWe'll email full instructions to the address you already shared. Tap **Done** when you're ready to wrap up.`,
+        volunteer: `Amazing, ${state.name}! 🤝 Volunteers are the heart of PediPlace.\n\nWhether you want to donate supplies, assemble care bags, or support families in our clinic, there's a place for you. Pick the option that interests you most and we'll share the supply list and next steps.\n\nWhat type of volunteer opportunity interests you?`,
+        volunteer_items: (() => {
+          const volId = state.volunteerType || state.interest;
+          const opt = VOLUNTEER_OPTIONS.find((v) => v.id === volId) as (typeof VOLUNTEER_OPTIONS)[number] & { details?: string; noAssembly?: boolean } | undefined;
+          const title = opt?.title || 'volunteering';
+          const detailsLine = opt?.details ? `${opt.details}\n\n` : '';
+          const assemblyLine = opt?.noAssembly ? '' : "📦 **Curious about exactly what we need?** We've got a full supply list ready — we'll send it straight to your inbox so nothing gets missed (and a quick heads-up: bags should arrive pre-assembled).\n\n";
+          return `Perfect! Here's what we need for **${title}**.\n\n${detailsLine}${assemblyLine}📍 Drop-off: 502 S. Old Orchard Lane, #126, Lewisville, TX 75067\n🕐 Mon–Fri: 9am–12pm & 2pm–4pm (closed for lunch 12:30–1:30pm)\n\nWe'll email full instructions to the address you already shared. Tap **Done** when you're ready to wrap up.`;
+        })(),
         corporate: "Excellent! 🏢 Corporate and foundation partners are vital to our mission.\n\nWe have a list of 25 top-matched funders for PediPlace — including foundations like Robert Wood Johnson, W.K. Kellogg, Gates Foundation, and many Texas-based funders.\n\nWhich best describes your organization?",
         inkind: "Thank you for thinking of in-kind giving! 📦 Here's what PediPlace needs most right now:\n\n**Everyday Essentials:** Diapers, baby wipes, Tylenol/Advil/Motrin, Band-Aids, children's books, Target/Walmart gift cards\n\n**Special Bags:** Snack bags, newborn welcome bags, birthday bags, hygiene bags — all must come pre-assembled.\n\nWe'll send our full supply list and drop-off info to the email you already shared. Tap **Done** when you're ready to wrap up.",
         email: `Thank you for your interest in **${state.program ? PROGRAMS.find((p) => p.id === state.program)?.title || state.program : 'PediPlace'}**${state.donationAmount && !isNaN(Number(state.donationAmount)) ? ` and considering a **$${Number(state.donationAmount).toLocaleString()}** gift` : ''}! 🙏\n\nCan I get your email address to send you donation instructions, our latest impact report, and next steps?`,
         timeline: "Almost done! When are you thinking of making this gift or getting involved?",
-        followup: "One last question — is there anything specific you'd like to know more about?\n\nFor example: How donations are used, tax receipts, volunteering at our school clinics, our mental health program, or matching gifts?",
+        followup: "Before we wrap up — would you like to learn about other ways to volunteer at PediPlace? Pick one to see what's needed, or let us know you're all set.",
         complete: `🎉 Thank you so much, **${state.name}**!\n\nWe've received your interest and will be in touch within **2 business days**.\n\n📧 We'll send details to your email shortly.\n\n**Ready to give now?** You can donate directly at [pediplace.org](https://www.pediplace.org)\n📞 Questions? Call us: **972-436-7962**\n📍 502 S. Old Orchard Lane, #126, Lewisville, TX 75067`,
         interests: INTEREST_OPTIONS,
         timelines: TIMELINE_OPTIONS,
@@ -390,20 +405,6 @@ export function buildBotMessages(
           { label: 'Government / federal grant', value: 'government', icon: '🏛️' },
           { label: 'Other organization', value: 'other', icon: '📋' },
         ],
-        followupOpts: [
-          { label: 'How are donations used?', value: 'usage', icon: '📊' },
-          { label: 'Is my donation tax-deductible?', value: 'tax', icon: '📋' },
-          { label: 'Tell me about school clinics', value: 'school', icon: '🏫' },
-          { label: 'Corporate matching gifts', value: 'matching', icon: '✖️' },
-          { label: 'No further questions', value: 'none', icon: '✅' },
-        ],
-        followupAnswers: {
-          usage: '100% of your donation goes directly to patient care — we break it down in our annual report sent to your email.',
-          tax: 'Yes! PediPlace is a registered 501(c)(3). Your receipt will be emailed within 24 hours of your donation.',
-          school: 'We have clinics inside Central Elementary (LISD) and Fred Moore High School (DISD), serving at-risk students directly.',
-          matching: 'Many employers will match your donation! Ask your HR department for a matching gift form.',
-          none: "No problem! We'll send you everything you need via email.",
-        },
         moreQ: 'Any other questions?',
         doneOpt: "That's all, thank you!",
         btnDone: 'Done',
@@ -472,7 +473,15 @@ export function buildBotMessages(
       break;
     case 'volunteer_items': {
       const btnD = (t as { btnDone?: string }).btnDone || 'Done';
-      add(t.volunteer_items, [{ label: btnD, value: 'done', icon: '✅' }], 'none');
+      const exploreLabel = lang === 'es' ? 'Ver otra oportunidad' : 'Explore another opportunity';
+      add(
+        t.volunteer_items,
+        [
+          { label: exploreLabel, value: 'explore_more_volunteer', icon: '🔄' },
+          { label: btnD, value: 'done', icon: '✅' },
+        ],
+        'none',
+      );
       break;
     }
     case 'corporate_check':
@@ -497,9 +506,16 @@ export function buildBotMessages(
       add(lead + t.timeline, t.timelines);
       break;
     }
-    case 'follow_up':
-      add(t.followup, t.followupOpts);
+    case 'follow_up': {
+      const allSetLabel = lang === 'es' ? 'Ya estoy listo, ¡gracias!' : "I'm all set, thanks!";
+      const remainingVolunteer = volunteerChoices.filter((v) => v.value !== state.volunteerType);
+      const opts = [
+        ...remainingVolunteer,
+        { label: allSetLabel, value: 'done', icon: '✅' },
+      ];
+      add(t.followup, opts);
       break;
+    }
     case 'complete':
       add(t.complete);
       break;
@@ -700,13 +716,12 @@ export default function DonorDiscovery({
   const [irsQuery, setIrsQuery] = useState('');
   const [irsResults, setIrsResults] = useState<ProPublicaOrg[]>([]);
   const [irsLoading, setIrsLoading] = useState(false);
-  const [irsError, setIrsError] = useState('');
   const [irsSearched, setIrsSearched] = useState(false);
 
   /* ── Smart scan ── */
 
   /* ── IRS advanced filters ── */
-  const [irsStateFilter, setIrsStateFilter] = useState('TX');
+  const [irsStateFilter, setIrsStateFilter] = useState('');
   const [irsNTEEFilter, setIrsNTEEFilter] = useState('');
   const [irsTypeFilter, setIrsTypeFilter] = useState('All Types');
 
@@ -722,6 +737,88 @@ export default function DonorDiscovery({
   const [irsEmailContent, setIrsEmailContent] = useState('');
   const [irsEmailLoading, setIrsEmailLoading] = useState(false);
   const [irsEmailCopied, setIrsEmailCopied] = useState(false);
+
+  /* ── Pipeline persistence (load saved entries from localStorage on mount) ── */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PIPELINE_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<PipelineEntry>[];
+      if (!Array.isArray(saved)) return;
+      const migrated: PipelineEntry[] = saved
+        .filter((e): e is Partial<PipelineEntry> & { id: string } => typeof e?.id === 'string')
+        .map((e) => {
+          const legacy = e.pipelineStatus as string | undefined;
+          const status: PipelineStatus =
+            legacy === 'pipeline' ? 'cold' :
+            legacy === 'donated' ? 'awarded' :
+            legacy === 'cold' || legacy === 'contacted' || legacy === 'responded' || legacy === 'awarded' ? legacy :
+            'cold';
+          return {
+            ...(e as PipelineEntry),
+            pipelineStatus: status,
+            addedAt: e.addedAt || new Date().toISOString(),
+            responseReceived: (e.responseReceived as ResponseReceived) || 'No Response',
+            amountAwarded: typeof e.amountAwarded === 'number' ? e.amountAwarded : 0,
+            emailAttempts: typeof e.emailAttempts === 'number' ? e.emailAttempts : 0,
+            notes: typeof e.notes === 'string' ? e.notes : '',
+          };
+        });
+      setPipeline(migrated);
+    } catch {
+      /* ignore corrupt storage */
+    }
+  }, []);
+
+  /* ── Pipeline persistence (save on every change) ── */
+  useEffect(() => {
+    try {
+      localStorage.setItem(PIPELINE_STORAGE_KEY, JSON.stringify(pipeline));
+    } catch {
+      /* storage may be full or disabled */
+    }
+  }, [pipeline]);
+
+  /* ── IRS pipeline persistence (load on mount, with migration of legacy status keys) ── */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(IRS_PIPELINE_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Partial<IRSPipelineEntry>[];
+      if (!Array.isArray(saved)) return;
+      const migrated: IRSPipelineEntry[] = saved
+        .filter((e): e is Partial<IRSPipelineEntry> & { id: string; org: IRSPipelineEntry['org'] } => typeof e?.id === 'string' && !!e?.org)
+        .map((e) => {
+          const legacy = e.status as string | undefined;
+          const status: PipelineStatus =
+            legacy === 'new' ? 'cold' :
+            legacy === 'donated' ? 'awarded' :
+            legacy === 'cold' || legacy === 'contacted' || legacy === 'responded' || legacy === 'awarded' ? legacy :
+            'cold';
+          return {
+            ...(e as IRSPipelineEntry),
+            status,
+            addedAt: e.addedAt || new Date().toISOString(),
+            responseReceived: (e.responseReceived as ResponseReceived) || 'No Response',
+            amountAwarded: typeof e.amountAwarded === 'number' ? e.amountAwarded : 0,
+            emailAttempts: typeof e.emailAttempts === 'number' ? e.emailAttempts : 0,
+            notes: typeof e.notes === 'string' ? e.notes : '',
+          };
+        });
+      setIrsPipeline(migrated);
+    } catch {
+      /* ignore corrupt storage */
+    }
+  }, []);
+
+  /* ── IRS pipeline persistence (save on every change) ── */
+  useEffect(() => {
+    try {
+      localStorage.setItem(IRS_PIPELINE_STORAGE_KEY, JSON.stringify(irsPipeline));
+    } catch {
+      /* storage may be full or disabled */
+    }
+  }, [irsPipeline]);
 
   /* ── Init bot ── */
   useEffect(() => {
@@ -904,29 +1001,32 @@ export default function DonorDiscovery({
       return;
     }
 
+    if (botStep === 'volunteer_items') {
+      if (value === 'explore_more_volunteer') {
+        setBotStep('follow_up');
+        addBotMessages('follow_up', ns);
+        return;
+      }
+      if (value === 'done') {
+        finishBot(ns);
+        return;
+      }
+    }
+
     if (botStep === 'follow_up') {
-      // "That's all, thank you!" — finish the bot immediately
       if (value === 'done') {
         finishBot(ns);
         return;
       }
 
-      // Answer a follow-up question and loop back
-      // Note: addUserMessage(label) already called at the top of handleOption — do NOT call it again
-      const answers: Record<string, string> = lang === 'es'
-        ? { usage: 'El 100% de tu donación va directamente a la atención del paciente.', tax: '¡Sí! PediPlace es una organización 501(c)(3) registrada.', school: 'Tenemos clínicas dentro de la Escuela Primaria Central (LISD) y la Escuela Secundaria Fred Moore (DISD).', matching: '¡Muchos empleadores igualan tu donación!', none: '¡No hay problema! Te enviaremos todo lo que necesitas.' }
-        : { usage: "100% of your donation goes directly to patient care — we break it down in our annual report.", tax: "Yes! PediPlace is a registered 501(c)(3). Your receipt will be emailed within 24 hours.", school: "We have clinics inside Central Elementary (LISD) and Fred Moore High School (DISD).", matching: "Many employers will match your donation! Ask your HR department for a matching gift form.", none: "No problem! We'll send you everything you need via email." };
-      const resp = answers[value] || (lang === 'es' ? 'Incluiremos esa información en tu correo.' : "We'll include that information in your follow-up email!");
-      const moreQ = lang === 'es' ? '¿Alguna otra pregunta?' : 'Any other questions?';
-      const doneLabel = lang === 'es' ? '¡Eso es todo, gracias!' : "That's all, thank you!";
-      setTimeout(() => {
-        setMessages((prev) => [...prev, {
-          id: `bot-followup-${Date.now()}`, role: 'bot',
-          text: `${resp}\n\n${moreQ}`,
-          options: [{ label: doneLabel, value: 'done', icon: '✅' }],
-        }]);
-      }, 500);
-      return;
+      const isVolunteerPick = VOLUNTEER_OPTIONS.some((v) => v.id === value);
+      if (isVolunteerPick) {
+        ns.volunteerType = value;
+        setBotState(ns);
+        setBotStep('volunteer_items');
+        addBotMessages('volunteer_items', ns);
+        return;
+      }
     }
 
     // Complete — also catches 'done' clicks that come from non-follow_up steps
@@ -1014,7 +1114,6 @@ export default function DonorDiscovery({
   const fetchIRS = async (q: string, state: string, ntee: string, type: string, page: number) => {
     const effectiveQuery = q.trim() || 'health';
     setIrsLoading(true);
-    setIrsError('');
     setIrsSearched(true);
     try {
       // Routed through Vite proxy (dev) or Netlify redirect (prod) to avoid CORS
@@ -1052,6 +1151,8 @@ export default function DonorDiscovery({
         });
       }
 
+      orgs = [...orgs].sort((a, b) => scoreOrg(b).score - scoreOrg(a).score);
+
       const total = data.total_results ?? orgs.length;
       const numPages = data.num_pages ?? Math.ceil(total / 25);
       setIrsTotalResults(total);
@@ -1060,11 +1161,10 @@ export default function DonorDiscovery({
       setIrsResults(orgs);
       setIrsLastQuery({ q: effectiveQuery, state, ntee, type });
 
-      if (orgs.length === 0) {
-        setIrsError(`No results for "${effectiveQuery}"${state ? ` in ${state}` : ''}. Try a broader keyword or remove filters.`);
-      }
-    } catch (err: any) {
-      setIrsError(`Could not reach IRS database. ProPublica API error: ${err?.message || 'Network error'}. Please check your connection.`);
+    } catch {
+      setIrsResults([]);
+      setIrsTotalResults(0);
+      setIrsTotalPages(0);
     }
     setIrsLoading(false);
   };
@@ -1079,46 +1179,50 @@ export default function DonorDiscovery({
     irsEmailStepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // Auto-search on first render
-  const irsAutoSearched = React.useRef(false);
-  React.useEffect(() => {
-    if (!irsAutoSearched.current) {
-      irsAutoSearched.current = true;
-      fetchIRS('pediatric health children', 'TX', '', 'All Types', 1);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   /* ── Add org to IRS pipeline ── */
   const addToIRSPipeline = (org: ProPublicaOrg & { relevanceScore?: number; matchBadge?: string }) => {
     if (irsPipeline.some((p) => p.org.ein === org.ein)) return;
     setIrsPipeline((prev) => [
       ...prev,
-      { id: `ipl-${Date.now()}`, org, status: 'new', notes: '', addedAt: new Date().toISOString() },
+      {
+        id: `ipl-${Date.now()}`,
+        org,
+        status: 'cold',
+        notes: '',
+        addedAt: new Date().toISOString(),
+        responseReceived: 'No Response',
+        amountAwarded: 0,
+        emailAttempts: 0,
+      },
     ]);
   };
 
   const inIRSPipeline = (ein: string) => irsPipeline.some((p) => p.org.ein === ein);
 
-  const updateIRSPipelineStatus = (id: string, status: IRSPipelineEntry['status']) =>
-    setIrsPipeline((prev) => prev.map((p) => p.id === id ? { ...p, status } : p));
-
-  const updateIRSPipelineNotes = (id: string, notes: string) =>
-    setIrsPipeline((prev) => prev.map((p) => p.id === id ? { ...p, notes } : p));
+  const updateIRSPipelineEntry = (id: string, patch: Partial<IRSPipelineEntry>) =>
+    setIrsPipeline((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
 
   const removeFromIRSPipeline = (id: string) =>
     setIrsPipeline((prev) => prev.filter((p) => p.id !== id));
 
   const exportIRSPipelineCSV = () => {
-    const h = ['Organization', 'EIN', 'City', 'State', 'NTEE', 'Assets', 'Income', 'Score', 'Status', 'Notes', 'Date Added'];
+    const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = [
+      'Organization', 'EIN', 'City', 'State', 'NTEE', 'Assets', 'Income', 'Score',
+      'Status', 'Response Received', 'Amount Awarded', 'Email Attempts', 'Notes', 'Date Added',
+    ];
     const rows = irsPipeline.map((p) => [
-      `"${p.org.name}"`, p.org.ein, p.org.city, p.org.state,
-      p.org.ntee_code, p.org.asset_amount, p.org.income_amount,
-      p.org.relevanceScore || '', p.status, `"${p.notes}"`,
-      new Date(p.addedAt).toLocaleDateString(),
+      escape(p.org.name), escape(p.org.ein), escape(p.org.city), escape(p.org.state),
+      escape(p.org.ntee_code), p.org.asset_amount, p.org.income_amount, p.org.relevanceScore || '',
+      escape(p.status), escape(p.responseReceived), p.amountAwarded, p.emailAttempts,
+      escape(p.notes), escape(new Date(p.addedAt).toLocaleDateString()),
     ]);
-    const csv = [h, ...rows].map((r) => r.join(',')).join('\n');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'irs_pipeline.csv'; a.click();
+    const csv = [header.map(escape).join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `irs_pipeline_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
   };
 
   /* ── Generate email for IRS org ── */
@@ -1248,18 +1352,64 @@ PediPlace | [Phone] | [Email] | pediplace.org`
     setCuratedEmailLoading(false);
   };
 
+  /* ── Shuffled curated funders (Fisher–Yates, reshuffled once per page mount) ── */
+  const shuffledCurated = useMemo(() => {
+    const arr = [...curatedFunders];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }, []);
+
   /* ── Filtered curated ── */
-  const filteredCurated = curatedFunders.filter((f) => {
+  const filteredCurated = shuffledCurated.filter((f) => {
     const q = curatedSearch.toLowerCase();
     const matchSearch = !q || f.name.toLowerCase().includes(q) || f.tags.some((t) => t.toLowerCase().includes(q)) || f.location.toLowerCase().includes(q);
     const matchType = typeFilter === 'All Types' || f.type === typeFilter.toLowerCase();
     return matchSearch && matchType;
   });
 
-  const pipelineCount = pipeline.filter((p) => p.pipelineStatus === 'pipeline').length;
+  const pipelineCount = pipeline.filter((p) => p.pipelineStatus === 'cold').length;
   const contactedCount = pipeline.filter((p) => p.pipelineStatus === 'contacted').length;
   const inPipeline = (id: string) => pipeline.some((p) => p.id === id);
-  const addToPipeline = (f: CuratedFunder) => { if (!inPipeline(f.id)) setPipeline((p) => [...p, { ...f, pipelineStatus: 'pipeline' }]); };
+  const addToPipeline = (f: CuratedFunder) => {
+    if (inPipeline(f.id)) return;
+    setPipeline((p) => [
+      ...p,
+      {
+        ...f,
+        pipelineStatus: 'cold',
+        addedAt: new Date().toISOString(),
+        responseReceived: 'No Response',
+        amountAwarded: 0,
+        emailAttempts: 0,
+        notes: '',
+      },
+    ]);
+  };
+  const removeFromPipeline = (id: string) => setPipeline((p) => p.filter((e) => e.id !== id));
+  const updatePipelineEntry = (id: string, patch: Partial<PipelineEntry>) =>
+    setPipeline((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+
+  const exportCuratedPipelineCSV = () => {
+    const escape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = [
+      'Organization', 'Type', 'Match Score', 'Location', 'Grant Range', 'Email', 'Website',
+      'Status', 'Response Received', 'Amount Awarded', 'Email Attempts', 'Notes', 'Date Added',
+    ];
+    const rows = pipeline.map((p) => [
+      escape(p.name), escape(p.type), `${p.matchScore}/10`, escape(p.location), escape(p.grantRange),
+      escape(p.email), escape(p.website),
+      escape(p.pipelineStatus), escape(p.responseReceived), p.amountAwarded, p.emailAttempts,
+      escape(p.notes), escape(new Date(p.addedAt).toLocaleDateString()),
+    ]);
+    const csv = [header.map(escape).join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `pediplace_pipeline_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  };
 
   const exportCSV = () => {
     const h = ['Name', 'Email', 'Interest', 'Program', 'Amount', 'Timeline', 'Date'];
@@ -1760,18 +1910,10 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                     <p className="text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">Step 3 — Prospect Pipeline</p>
                     {pipeline.length > 0 && (
                       <button
-                        onClick={() => {
-                          const csv = ['Name,Location,Type,Grant Range,Status,Added'].concat(
-                            pipeline.map((p) => `"${p.name}","${p.location}","${p.type}","${p.grantRange}","${p.pipelineStatus}","${p.addedAt}"`)
-                          ).join('\n');
-                          const a = document.createElement('a');
-                          a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-                          a.download = 'pediplace_pipeline.csv';
-                          a.click();
-                        }}
-                        className="text-xs font-semibold border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 px-3 py-1.5 rounded-lg transition-colors"
+                        onClick={exportCuratedPipelineCSV}
+                        className="text-xs font-semibold border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
                       >
-                        Export CSV
+                        <Download className="w-3.5 h-3.5" /> Export CSV
                       </button>
                     )}
                   </div>
@@ -1779,21 +1921,122 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                     {pipeline.length === 0 ? (
                       <p className="text-sm text-gray-400 dark:text-slate-600 text-center py-8">No prospects in pipeline yet</p>
                     ) : (
-                      <div className="space-y-2">
-                        {pipeline.map((entry) => (
-                          <div key={entry.id} className="flex items-center gap-3 py-2.5 border-b border-gray-50 dark:border-slate-800 last:border-b-0">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-gray-800 dark:text-slate-200 truncate">{entry.name}</p>
-                              <p className="text-[11px] text-gray-400 dark:text-slate-600">{entry.location} · {entry.grantRange}</p>
-                            </div>
-                            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${entry.pipelineStatus === 'donated' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : entry.pipelineStatus === 'contacted' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400'}`}>
-                              {entry.pipelineStatus}
-                            </span>
-                            <button onClick={() => generateEmail(entry as unknown as CuratedFunder)} className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors" title="Generate Email">
-                              <Bot className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 dark:border-slate-800">
+                              {['Organization', 'Type', 'Score', 'Response Received', 'Amount Awarded', 'Email Attempts', 'Status', 'Notes', 'Update'].map((h) => (
+                                <th key={h} className="text-left text-[11px] font-bold text-gray-400 dark:text-slate-600 uppercase tracking-wider pb-2.5 pr-3 whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pipeline.map((entry) => {
+                              const statusBadgeColors: Record<PipelineStatus, string> = {
+                                cold: 'bg-gray-100 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300',
+                                contacted: 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400',
+                                responded: 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-400',
+                                awarded: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+                              };
+                              return (
+                                <tr key={entry.id} className="border-b border-gray-50 dark:border-slate-800/60 last:border-b-0 align-top">
+                                  <td className="py-3 pr-3">
+                                    <p className="font-semibold text-gray-800 dark:text-slate-200 max-w-[180px] truncate">{entry.name}</p>
+                                    <p className="text-[10px] text-gray-400 dark:text-slate-600">{new Date(entry.addedAt).toLocaleDateString()}</p>
+                                    <a href={`mailto:${entry.email}`} className="text-[10px] text-blue-600 dark:text-cyan-400 hover:underline truncate block max-w-[180px]">{entry.email}</a>
+                                  </td>
+                                  <td className="py-3 pr-3 text-gray-500 dark:text-slate-500 capitalize whitespace-nowrap">{entry.type}</td>
+                                  <td className="py-3 pr-3">
+                                    <span className="inline-flex items-center justify-center text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20">
+                                      {entry.matchScore}/10
+                                    </span>
+                                  </td>
+                                  <td className="py-3 pr-3">
+                                    <select
+                                      value={entry.responseReceived}
+                                      onChange={(e) => updatePipelineEntry(entry.id, { responseReceived: e.target.value as ResponseReceived })}
+                                      className="text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 px-2 py-1 rounded-lg focus:outline-none focus:border-blue-400"
+                                    >
+                                      <option value="No Response">No Response</option>
+                                      <option value="Interested">Interested</option>
+                                      <option value="Declined">Declined</option>
+                                      <option value="Awarded">Awarded</option>
+                                    </select>
+                                  </td>
+                                  <td className="py-3 pr-3">
+                                    <div className="relative">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400 dark:text-slate-500">$</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={entry.amountAwarded || ''}
+                                        onChange={(e) => updatePipelineEntry(entry.id, { amountAwarded: Number(e.target.value) || 0 })}
+                                        placeholder="e.g. 50000"
+                                        className="text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 pl-5 pr-2 py-1 rounded-lg focus:outline-none focus:border-blue-400 w-28"
+                                      />
+                                    </div>
+                                  </td>
+                                  <td className="py-3 pr-3">
+                                    <div className="inline-flex items-center gap-1">
+                                      <button
+                                        onClick={() => updatePipelineEntry(entry.id, { emailAttempts: Math.max(0, entry.emailAttempts - 1) })}
+                                        className="w-6 h-6 flex items-center justify-center text-gray-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-md font-bold transition-colors"
+                                        title="Decrease"
+                                      >−</button>
+                                      <span className="text-xs font-bold text-gray-700 dark:text-slate-300 w-5 text-center">{entry.emailAttempts}</span>
+                                      <button
+                                        onClick={() => updatePipelineEntry(entry.id, { emailAttempts: entry.emailAttempts + 1 })}
+                                        className="w-6 h-6 flex items-center justify-center text-white bg-blue-600 hover:bg-blue-700 rounded-md font-bold transition-colors"
+                                        title="Increase"
+                                      >+</button>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 pr-3">
+                                    <select
+                                      value={entry.pipelineStatus}
+                                      onChange={(e) => updatePipelineEntry(entry.id, { pipelineStatus: e.target.value as PipelineStatus })}
+                                      className={`text-xs font-semibold px-2 py-1 rounded-lg border focus:outline-none capitalize ${statusBadgeColors[entry.pipelineStatus]}`}
+                                    >
+                                      <option value="cold">Cold</option>
+                                      <option value="contacted">Contacted</option>
+                                      <option value="responded">Responded</option>
+                                      <option value="awarded">Awarded</option>
+                                    </select>
+                                  </td>
+                                  <td className="py-3 pr-3">
+                                    <input
+                                      value={entry.notes}
+                                      onChange={(e) => updatePipelineEntry(entry.id, { notes: e.target.value })}
+                                      placeholder="Notes…"
+                                      className="text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 px-2 py-1 rounded-lg focus:outline-none focus:border-blue-400 w-32"
+                                    />
+                                  </td>
+                                  <td className="py-3">
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => {
+                                          updatePipelineEntry(entry.id, { emailAttempts: entry.emailAttempts + 1, pipelineStatus: entry.pipelineStatus === 'cold' ? 'contacted' : entry.pipelineStatus });
+                                          generateEmail(entry as unknown as CuratedFunder);
+                                        }}
+                                        className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                                        title="Generate Email (also bumps Email Attempts)"
+                                      >
+                                        <Bot className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => removeFromPipeline(entry.id)}
+                                        className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                                        title="Remove from pipeline"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
@@ -1877,21 +2120,6 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                           </button>
                         </div>
                       </div>
-
-                      {/* Quick search pills — always shown so users can jump straight to relevant queries */}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className="text-[11px] text-gray-400 dark:text-slate-600 self-center">Quick search:</span>
-                        {['pediatric health','children foundation','dallas foundation','denton nonprofit','youth health','mental health tx','uninsured children','maternal child health'].map((q) => (
-                          <button key={q} onClick={() => { setIrsQuery(q); setIrsStateFilter('TX'); setTimeout(() => searchIRSWithFilters(q), 0); }}
-                            className="text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400 px-3 py-1 rounded-full hover:border-blue-400 hover:text-blue-600 dark:hover:text-cyan-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors">
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-
-                      {irsError && (
-                        <div className="mt-3 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-400">{irsError}</div>
-                      )}
 
                       {/* Loading */}
                       {irsLoading && (
@@ -2104,63 +2332,123 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="border-b border-gray-100 dark:border-slate-800">
-                                {['Organization','Type','Contact','Score','Status','Notes','Action'].map((h) => (
-                                  <th key={h} className="text-left text-[11px] font-bold text-gray-400 dark:text-slate-600 uppercase tracking-wider pb-2.5 pr-4 whitespace-nowrap">{h}</th>
+                                {['Organization', 'Type', 'Score', 'Response Received', 'Amount Awarded', 'Email Attempts', 'Status', 'Notes', 'Update'].map((h) => (
+                                  <th key={h} className="text-left text-[11px] font-bold text-gray-400 dark:text-slate-600 uppercase tracking-wider pb-2.5 pr-3 whitespace-nowrap">{h}</th>
                                 ))}
                               </tr>
                             </thead>
                             <tbody>
-                              {irsPipeline.map((entry) => (
-                                <tr key={entry.id} className="border-b border-gray-50 dark:border-slate-800/60 last:border-b-0">
-                                  <td className="py-3 pr-4">
-                                    <p className="font-semibold text-gray-800 dark:text-slate-200 max-w-[160px] truncate">{entry.org.name}</p>
-                                    <p className="text-[10px] text-gray-400 dark:text-slate-600">{entry.org.city}, {entry.org.state}</p>
-                                  </td>
-                                  <td className="py-3 pr-4 text-gray-500 dark:text-slate-500 whitespace-nowrap">{entry.org.ntee_code || '—'}</td>
-                                  <td className="py-3 pr-4">
-                                    <a href={`https://projects.propublica.org/nonprofits/organizations/${entry.org.ein}`} target="_blank" rel="noopener noreferrer"
-                                      className="text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1">
-                                      <ExternalLink className="w-3 h-3" /> IRS
-                                    </a>
-                                  </td>
-                                  <td className="py-3 pr-4">
-                                    <span className={`font-bold ${(entry.org.relevanceScore || 0) >= 7 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                                      {entry.org.relevanceScore || '—'}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 pr-4">
-                                    <select value={entry.status} onChange={(e) => updateIRSPipelineStatus(entry.id, e.target.value as IRSPipelineEntry['status'])}
-                                      className={`text-xs font-semibold px-2 py-1 rounded-lg border focus:outline-none ${
-                                        entry.status === 'donated' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400' :
-                                        entry.status === 'responded' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-400' :
-                                        entry.status === 'contacted' ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400' :
-                                        'bg-gray-100 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400'
+                              {irsPipeline.map((entry) => {
+                                const statusBadgeColors: Record<PipelineStatus, string> = {
+                                  cold: 'bg-gray-100 dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300',
+                                  contacted: 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400',
+                                  responded: 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-400',
+                                  awarded: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+                                };
+                                return (
+                                  <tr key={entry.id} className="border-b border-gray-50 dark:border-slate-800/60 last:border-b-0 align-top">
+                                    <td className="py-3 pr-3">
+                                      <p className="font-semibold text-gray-800 dark:text-slate-200 max-w-[180px] truncate">{entry.org.name}</p>
+                                      <p className="text-[10px] text-gray-400 dark:text-slate-600">{entry.org.city}, {entry.org.state} · {new Date(entry.addedAt).toLocaleDateString()}</p>
+                                      <a href={`https://projects.propublica.org/nonprofits/organizations/${entry.org.ein}`} target="_blank" rel="noopener noreferrer"
+                                        className="text-[10px] text-blue-600 dark:text-cyan-400 hover:underline inline-flex items-center gap-1">
+                                        <ExternalLink className="w-3 h-3" /> IRS · EIN {entry.org.ein}
+                                      </a>
+                                    </td>
+                                    <td className="py-3 pr-3 text-gray-500 dark:text-slate-500 whitespace-nowrap">{entry.org.ntee_code || '—'}</td>
+                                    <td className="py-3 pr-3">
+                                      <span className={`inline-flex items-center justify-center text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                                        (entry.org.relevanceScore || 0) >= 7
+                                          ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20'
+                                          : 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20'
                                       }`}>
-                                      <option value="new">New</option>
-                                      <option value="contacted">Contacted</option>
-                                      <option value="responded">Responded</option>
-                                      <option value="donated">Donated</option>
-                                    </select>
-                                  </td>
-                                  <td className="py-3 pr-4">
-                                    <input value={entry.notes} onChange={(e) => updateIRSPipelineNotes(entry.id, e.target.value)}
-                                      placeholder="Add notes..."
-                                      className="text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 px-2 py-1 rounded-lg focus:outline-none focus:border-blue-400 w-32" />
-                                  </td>
-                                  <td className="py-3">
-                                    <div className="flex items-center gap-1">
-                                      <button onClick={() => generateEmailForOrg(entry.org)}
-                                        className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors" title="Generate Email">
-                                        <Bot className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button onClick={() => removeFromIRSPipeline(entry.id)}
-                                        className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors" title="Remove">
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
+                                        {entry.org.relevanceScore || '—'}{entry.org.relevanceScore ? '/10' : ''}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 pr-3">
+                                      <select
+                                        value={entry.responseReceived}
+                                        onChange={(e) => updateIRSPipelineEntry(entry.id, { responseReceived: e.target.value as ResponseReceived })}
+                                        className="text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 px-2 py-1 rounded-lg focus:outline-none focus:border-blue-400"
+                                      >
+                                        <option value="No Response">No Response</option>
+                                        <option value="Interested">Interested</option>
+                                        <option value="Declined">Declined</option>
+                                        <option value="Awarded">Awarded</option>
+                                      </select>
+                                    </td>
+                                    <td className="py-3 pr-3">
+                                      <div className="relative">
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400 dark:text-slate-500">$</span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={entry.amountAwarded || ''}
+                                          onChange={(e) => updateIRSPipelineEntry(entry.id, { amountAwarded: Number(e.target.value) || 0 })}
+                                          placeholder="e.g. 50000"
+                                          className="text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 pl-5 pr-2 py-1 rounded-lg focus:outline-none focus:border-blue-400 w-28"
+                                        />
+                                      </div>
+                                    </td>
+                                    <td className="py-3 pr-3">
+                                      <div className="inline-flex items-center gap-1">
+                                        <button
+                                          onClick={() => updateIRSPipelineEntry(entry.id, { emailAttempts: Math.max(0, entry.emailAttempts - 1) })}
+                                          className="w-6 h-6 flex items-center justify-center text-gray-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-md font-bold transition-colors"
+                                          title="Decrease"
+                                        >−</button>
+                                        <span className="text-xs font-bold text-gray-700 dark:text-slate-300 w-5 text-center">{entry.emailAttempts}</span>
+                                        <button
+                                          onClick={() => updateIRSPipelineEntry(entry.id, { emailAttempts: entry.emailAttempts + 1 })}
+                                          className="w-6 h-6 flex items-center justify-center text-white bg-blue-600 hover:bg-blue-700 rounded-md font-bold transition-colors"
+                                          title="Increase"
+                                        >+</button>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 pr-3">
+                                      <select
+                                        value={entry.status}
+                                        onChange={(e) => updateIRSPipelineEntry(entry.id, { status: e.target.value as PipelineStatus })}
+                                        className={`text-xs font-semibold px-2 py-1 rounded-lg border focus:outline-none capitalize ${statusBadgeColors[entry.status]}`}
+                                      >
+                                        <option value="cold">Cold</option>
+                                        <option value="contacted">Contacted</option>
+                                        <option value="responded">Responded</option>
+                                        <option value="awarded">Awarded</option>
+                                      </select>
+                                    </td>
+                                    <td className="py-3 pr-3">
+                                      <input
+                                        value={entry.notes}
+                                        onChange={(e) => updateIRSPipelineEntry(entry.id, { notes: e.target.value })}
+                                        placeholder="Notes…"
+                                        className="text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 px-2 py-1 rounded-lg focus:outline-none focus:border-blue-400 w-32"
+                                      />
+                                    </td>
+                                    <td className="py-3">
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => {
+                                            updateIRSPipelineEntry(entry.id, { emailAttempts: entry.emailAttempts + 1, status: entry.status === 'cold' ? 'contacted' : entry.status });
+                                            generateEmailForOrg(entry.org);
+                                          }}
+                                          className="text-blue-600 dark:text-cyan-400 hover:text-blue-700 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                                          title="Generate Email (also bumps Email Attempts)"
+                                        >
+                                          <Bot className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => removeFromIRSPipeline(entry.id)}
+                                          className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                                          title="Remove from pipeline"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
