@@ -7,15 +7,22 @@ export interface AuthUser {
   lastName: string;
 }
 
-const ALLOWED_USERS: AuthUser[] = [
+interface AllowedUser extends AuthUser {
+  password?: string;
+}
+
+const DEFAULT_ACCESS_PASSWORD = '123';
+const ADMIN_ACCESS_PASSWORD = 'Healthy2026!';
+
+const ALLOWED_USERS: AllowedUser[] = [
   { email: 'emily.lai@utdallas.edu', firstName: 'Emily', lastName: 'Lai' },
   { email: 'rohanshaileshkumar.mahajan@utdallas.edu', firstName: 'Rohan', lastName: 'Mahajan' },
   { email: 'maanasakeertana.malladi@utdallas.edu', firstName: 'Maanasa', lastName: 'Malladi' },
   { email: 'saivishnu.malladi@utdallas.edu', firstName: 'Sai', lastName: 'Malladi' },
   { email: 'meharkaur.matta@utdallas.edu', firstName: 'Mehar', lastName: 'Matta' },
+  { email: 'info@pediplace.org', firstName: 'PediPlace', lastName: 'Admin', password: ADMIN_ACCESS_PASSWORD },
+  { email: 'angelica.olvera@pediplace.org', firstName: 'Angelica', lastName: 'Olvera', password: ADMIN_ACCESS_PASSWORD },
 ];
-
-const ACCESS_PASSWORD = '123';
 
 interface LoginPageProps {
   onLogin: (user: AuthUser) => void;
@@ -35,16 +42,20 @@ export default function LoginPage({ onLogin, darkMode, onToggleDark, onBack }: L
     e.preventDefault();
     setError('');
 
-    const user = ALLOWED_USERS.find(
+    const matched = ALLOWED_USERS.find(
       (u) => u.email === email.toLowerCase().trim()
     );
 
-    if (!user || password !== ACCESS_PASSWORD) {
+    const expectedPassword = matched?.password ?? DEFAULT_ACCESS_PASSWORD;
+
+    if (!matched || password !== expectedPassword) {
       setError('Access denied. Invalid credentials or unauthorized email.');
       return;
     }
 
     setIsLoading(true);
+    const { password: _pw, ...user } = matched;
+    void _pw;
     setTimeout(() => {
       setIsLoading(false);
       onLogin(user);
