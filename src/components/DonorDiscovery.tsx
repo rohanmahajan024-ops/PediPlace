@@ -15,6 +15,9 @@ import {
   sendAdminLeadNotification,
   sendOutreachEmail,
   isEmailJSConfigured,
+  getEmailJSCredentials,
+  saveEmailJSCredentials,
+  clearEmailJSCredentials,
 } from '../utils/emailService';
 
 /* ────────────────────────────────────────────────────
@@ -761,7 +764,51 @@ export default function DonorDiscovery({
     try { return parseInt(localStorage.getItem('pediplace_outreach_sent_total') || '0', 10) || 0; }
     catch { return 0; }
   });
-  const emailjsReady = isEmailJSConfigured();
+
+  /* ── EmailJS in-app setup panel state ── */
+  const [emailjsReady, setEmailjsReady] = useState<boolean>(() => isEmailJSConfigured());
+  const [showEmailJSSetup, setShowEmailJSSetup] = useState<boolean>(false);
+  const [ejForm, setEjForm] = useState(() => {
+    const c = getEmailJSCredentials();
+    return {
+      serviceId:          c.serviceId,
+      templateId:         c.templateId,
+      publicKey:          c.publicKey,
+      outreachTemplateId: c.outreachTemplateId || '',
+    };
+  });
+  const [ejSaveStatus, setEjSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+
+  const handleSaveEmailJS = () => {
+    const trimmed = {
+      serviceId:          ejForm.serviceId.trim(),
+      templateId:         ejForm.templateId.trim(),
+      publicKey:          ejForm.publicKey.trim(),
+      outreachTemplateId: ejForm.outreachTemplateId.trim() || undefined,
+    };
+    if (!trimmed.serviceId || !trimmed.templateId || !trimmed.publicKey) {
+      setEjSaveStatus('error');
+      return;
+    }
+    saveEmailJSCredentials(trimmed);
+    setEmailjsReady(isEmailJSConfigured());
+    setEjSaveStatus('saved');
+    setShowEmailJSSetup(false);
+    setTimeout(() => setEjSaveStatus('idle'), 2500);
+  };
+
+  const handleResetEmailJS = () => {
+    clearEmailJSCredentials();
+    const c = getEmailJSCredentials();
+    setEjForm({
+      serviceId:          c.serviceId,
+      templateId:         c.templateId,
+      publicKey:          c.publicKey,
+      outreachTemplateId: c.outreachTemplateId || '',
+    });
+    setEmailjsReady(isEmailJSConfigured());
+    setShowEmailJSSetup(true);
+  };
 
   /* ── Pipeline persistence (load saved entries from localStorage on mount) ── */
   useEffect(() => {
@@ -2487,6 +2534,119 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                           <span className="ml-auto text-xs font-semibold text-blue-600 dark:text-cyan-400 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 rounded-lg truncate max-w-[180px]">{selectedOrgForEmail.name}</span>
                         )}
                       </div>
+
+                      {/* ── EmailJS connection banner / setup panel ───────────────── */}
+                      {emailjsReady && !showEmailJSSetup ? (
+                        <div className="flex items-center gap-2 mb-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-xl px-3 py-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">EmailJS connected</span>
+                          <span className="text-[11px] text-emerald-700/70 dark:text-emerald-400/70 truncate">
+                            Service: <code className="font-mono">{getEmailJSCredentials().serviceId.slice(0, 14) || '—'}</code>
+                          </span>
+                          <span className="ml-auto flex items-center gap-2">
+                            {ejSaveStatus === 'saved' && (
+                              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">Saved ✓</span>
+                            )}
+                            <button
+                              onClick={() => setShowEmailJSSetup(true)}
+                              className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={handleResetEmailJS}
+                              className="text-[11px] font-semibold text-gray-500 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400"
+                            >
+                              Reset
+                            </button>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mb-4 bg-amber-50/60 dark:bg-amber-500/5 border-2 border-amber-300 dark:border-amber-500/30 rounded-xl p-4">
+                          <div className="flex items-start gap-2 mb-3">
+                            <span className="text-amber-600 dark:text-amber-400 mt-0.5">⚙️</span>
+                            <div className="flex-1">
+                              <h4 className="text-sm font-bold text-gray-900 dark:text-white">Connect EmailJS to enable Send</h4>
+                              <p className="text-[11px] text-gray-500 dark:text-slate-500 leading-relaxed mt-0.5">
+                                1. Sign up free at <a className="text-blue-600 dark:text-cyan-400 hover:underline" href="https://www.emailjs.com" target="_blank" rel="noopener noreferrer">emailjs.com</a> →
+                                add an Email Service (Gmail/Outlook) → copy <strong>Service ID</strong>.
+                                2. Create a Template with <code className="font-mono">{'{{to_email}}'}</code> in "To Email", <code className="font-mono">{'{{subject}}'}</code> as Subject, <code className="font-mono">{'{{message}}'}</code> in body → copy <strong>Template ID</strong>.
+                                3. Account → API Keys → copy <strong>Public Key</strong>.
+                              </p>
+                            </div>
+                            {emailjsReady && (
+                              <button
+                                onClick={() => setShowEmailJSSetup(false)}
+                                className="text-[11px] font-semibold text-gray-500 dark:text-slate-500 hover:text-gray-700"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-500 uppercase tracking-wider mb-1">Service ID</label>
+                              <input
+                                type="text"
+                                value={ejForm.serviceId}
+                                onChange={(e) => { setEjForm({ ...ejForm, serviceId: e.target.value }); setEjSaveStatus('idle'); }}
+                                placeholder="service_xxxxxxx"
+                                className="w-full text-xs font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-blue-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-500 uppercase tracking-wider mb-1">Template ID</label>
+                              <input
+                                type="text"
+                                value={ejForm.templateId}
+                                onChange={(e) => { setEjForm({ ...ejForm, templateId: e.target.value }); setEjSaveStatus('idle'); }}
+                                placeholder="template_xxxxxxx"
+                                className="w-full text-xs font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-blue-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-500 uppercase tracking-wider mb-1">Public Key</label>
+                              <input
+                                type="text"
+                                value={ejForm.publicKey}
+                                onChange={(e) => { setEjForm({ ...ejForm, publicKey: e.target.value }); setEjSaveStatus('idle'); }}
+                                placeholder="xxxxxxxxxxxxxxxx"
+                                className="w-full text-xs font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-blue-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-500 uppercase tracking-wider mb-1">
+                                Outreach Template <span className="opacity-60 normal-case">(optional)</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={ejForm.outreachTemplateId}
+                                onChange={(e) => { setEjForm({ ...ejForm, outreachTemplateId: e.target.value }); setEjSaveStatus('idle'); }}
+                                placeholder="template_outreach_xxx"
+                                className="w-full text-xs font-mono bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-2.5 py-1.5 rounded-lg focus:outline-none focus:border-blue-400"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-3">
+                            <button
+                              onClick={handleSaveEmailJS}
+                              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" /> Save & Activate
+                            </button>
+                            {ejSaveStatus === 'error' && (
+                              <span className="text-[11px] font-semibold text-red-600 dark:text-red-400">Please fill in Service ID, Template ID, and Public Key.</span>
+                            )}
+                            {ejSaveStatus === 'saved' && (
+                              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">✓ Saved — EmailJS is now active.</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-400 dark:text-slate-600 mt-2">
+                            Credentials are stored in your browser's localStorage. They are not sent anywhere except EmailJS itself.
+                          </p>
+                        </div>
+                      )}
+
                       {!selectedOrgForEmail && (
                         <div className="flex flex-col items-center gap-2 py-10 text-center">
                           <div className="w-12 h-12 bg-gray-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-1">
@@ -2541,8 +2701,14 @@ PediPlace | [Phone] | [Email] | pediplace.org`
                               </button>
                             </div>
                             {!emailjsReady && (
-                              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
-                                EmailJS not configured. Set <code className="font-mono">VITE_EMAILJS_SERVICE_ID</code>, <code className="font-mono">VITE_EMAILJS_TEMPLATE_ID</code> and <code className="font-mono">VITE_EMAILJS_PUBLIC_KEY</code> in <code className="font-mono">.env</code> to enable sending.
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-2">
+                                <span>EmailJS not configured.</span>
+                                <button
+                                  onClick={() => setShowEmailJSSetup(true)}
+                                  className="font-bold underline hover:text-amber-700 dark:hover:text-amber-300"
+                                >
+                                  Open setup panel →
+                                </button>
                               </p>
                             )}
                             {irsSendStatus === 'sent' && (
