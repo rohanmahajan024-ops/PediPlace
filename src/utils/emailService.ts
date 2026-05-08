@@ -1,9 +1,10 @@
 import emailjs from '@emailjs/browser';
 
-const SERVICE_ID        = import.meta.env.VITE_EMAILJS_SERVICE_ID        as string;
-const TEMPLATE_ID       = import.meta.env.VITE_EMAILJS_TEMPLATE_ID       as string;
-const ADMIN_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID as string | undefined;
-const PUBLIC_KEY        = import.meta.env.VITE_EMAILJS_PUBLIC_KEY        as string;
+const SERVICE_ID           = import.meta.env.VITE_EMAILJS_SERVICE_ID           as string;
+const TEMPLATE_ID          = import.meta.env.VITE_EMAILJS_TEMPLATE_ID          as string;
+const ADMIN_TEMPLATE_ID    = import.meta.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID    as string | undefined;
+const OUTREACH_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_OUTREACH_TEMPLATE_ID as string | undefined;
+const PUBLIC_KEY           = import.meta.env.VITE_EMAILJS_PUBLIC_KEY           as string;
 
 // Initialize EmailJS once with the public key
 if (PUBLIC_KEY) {
@@ -35,6 +36,68 @@ function isConfigured(): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * True when EmailJS env vars are wired up — used by the UI to decide
+ * whether to show the "Send via EmailJS" button or the setup hint.
+ */
+export function isEmailJSConfigured(): boolean {
+  return Boolean(SERVICE_ID && TEMPLATE_ID && PUBLIC_KEY);
+}
+
+export interface OutreachEmailParams {
+  toEmail:     string;
+  toName?:     string;
+  subject:     string;
+  body:        string;
+  fromName?:   string;  // defaults to "PediPlace"
+  replyTo?:    string;  // defaults to info@pediplace.org
+  organization?: string;
+}
+
+export interface OutreachEmailResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Sends an outreach / grant inquiry email to a prospect organization via EmailJS.
+ *
+ * Uses VITE_EMAILJS_OUTREACH_TEMPLATE_ID if set, otherwise falls back to
+ * VITE_EMAILJS_TEMPLATE_ID. The EmailJS template must include {{to_email}}
+ * in the "To Email" field, plus {{subject}} and {{message}} placeholders
+ * in the body for the contents to be delivered correctly.
+ */
+export async function sendOutreachEmail(params: OutreachEmailParams): Promise<OutreachEmailResult> {
+  if (!isConfigured()) {
+    return { ok: false, error: 'EmailJS is not configured. Set VITE_EMAILJS_* env vars.' };
+  }
+  const toEmail = (params.toEmail || '').trim();
+  if (!toEmail || !/^\S+@\S+\.\S+$/.test(toEmail)) {
+    return { ok: false, error: 'A valid recipient email is required.' };
+  }
+
+  const templateId = OUTREACH_TEMPLATE_ID || TEMPLATE_ID;
+  const templateParams = {
+    to_email:     toEmail,
+    to_name:      params.toName     || params.organization || 'Grants Team',
+    from_name:    params.fromName   || 'PediPlace',
+    reply_to:     params.replyTo    || 'info@pediplace.org',
+    subject:      params.subject    || 'Partnership Inquiry — PediPlace',
+    message:      params.body,
+    organization: params.organization || params.toName || '',
+  };
+
+  try {
+    const result = await emailjs.send(SERVICE_ID, templateId, templateParams);
+    console.log('[EmailJS] Outreach email sent ✓', result.status, result.text, '→', toEmail);
+    return { ok: true };
+  } catch (err: any) {
+    const msg = err?.text || err?.message || 'Unknown EmailJS error';
+    console.error('[EmailJS] Outreach email FAILED:', msg);
+    return { ok: false, error: msg };
+  }
 }
 
 /**
