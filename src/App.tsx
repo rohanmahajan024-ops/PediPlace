@@ -10,8 +10,24 @@ import BotLeadsPage from './components/BotLeadsPage';
 import { HandHeart } from 'lucide-react';
 import { Sponsor } from './types/sponsor';
 
+const AUTH_STORAGE_KEY = 'pediplace_auth_user';
+
 function App() {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  // Restore the logged-in user from localStorage on mount so a refresh doesn't
+  // bounce the user back to the login page.
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && typeof parsed.email === 'string') {
+        return parsed as AuthUser;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
   const [showLogin, setShowLogin] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedSponsor, setSelectedSponsor] = useState<Sponsor | null>(null);
@@ -21,12 +37,14 @@ function App() {
     setUser(u);
     setShowLogin(false);
     setActiveTab('dashboard');
+    try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(u)); } catch { /* ignore */ }
   };
 
   const handleLogout = () => {
     setUser(null);
     setActiveTab('dashboard');
     setSelectedSponsor(null);
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* ignore */ }
   };
 
   const handleTabChange = (tab: string) => {
