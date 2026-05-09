@@ -41,13 +41,18 @@ export interface EmailJSCredentials {
   outreachTemplateId?: string;
 }
 
-/** Resolve the active credentials (localStorage overrides env). */
+/**
+ * Resolve the active credentials.
+ * Env vars (`.env` / `.env.local`) take precedence so local development with
+ * a properly-configured `.env` always works. localStorage is only used as a
+ * fallback in environments where env vars aren't set (e.g. a static demo).
+ */
 export function getEmailJSCredentials(): EmailJSCredentials {
   return {
-    serviceId:         lsGet(LS_KEYS.service)   ?? ENV_SERVICE_ID           ?? '',
-    templateId:        lsGet(LS_KEYS.template)  ?? ENV_TEMPLATE_ID          ?? '',
-    publicKey:         lsGet(LS_KEYS.publicKey) ?? ENV_PUBLIC_KEY           ?? '',
-    outreachTemplateId:lsGet(LS_KEYS.outreach)  ?? ENV_OUTREACH_TEMPLATE_ID ?? undefined,
+    serviceId:         (ENV_SERVICE_ID           && ENV_SERVICE_ID.trim())  || lsGet(LS_KEYS.service)   || '',
+    templateId:        (ENV_TEMPLATE_ID          && ENV_TEMPLATE_ID.trim()) || lsGet(LS_KEYS.template)  || '',
+    publicKey:         (ENV_PUBLIC_KEY           && ENV_PUBLIC_KEY.trim())  || lsGet(LS_KEYS.publicKey) || '',
+    outreachTemplateId:(ENV_OUTREACH_TEMPLATE_ID && ENV_OUTREACH_TEMPLATE_ID.trim()) || lsGet(LS_KEYS.outreach) || undefined,
   };
 }
 
