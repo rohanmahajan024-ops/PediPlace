@@ -1,0 +1,16 @@
+{
+  "name": "PediPlace",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "vite-dev-server",
+      "command": "npm run dev"
+    }
+  ],
+  "ports": [
+    {
+      "name": "Vite dev server",
+      "port": 5173
+    }
+  ]
+}
